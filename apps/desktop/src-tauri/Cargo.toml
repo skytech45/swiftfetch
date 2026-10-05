@@ -1,0 +1,20 @@
+[package]
+name = "swiftfetch-desktop"
+description = "SwiftFetch desktop app shell (Tauri v2)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+serde = { workspace = true }
+swiftfetch-store = { workspace = true }
+tauri = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
