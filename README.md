@@ -71,6 +71,7 @@ cargo run -p swiftfetch-desktop   # launch the desktop app window
 | M4 | Browser + media | MV3/Firefox extensions, native host, HLS/DASH grabber |
 | M5 | Depth + packaging | site grabber, mirrors, i18n, updater, installers |
 | M6 | Differentiators | BitTorrent, checksums, plugin API, hardening |
+| A0–A4 | Admin panel & services | web dashboard: update feed + version control/force-update, feature flags, licensing + device binding, payments + coupons, opt-in analytics — see [docs/admin-panel.md](docs/admin-panel.md) |
 
 ## License
 

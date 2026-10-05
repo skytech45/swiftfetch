@@ -3,6 +3,19 @@
 All notable changes to SwiftFetch are documented here. The format follows
 Keep a Changelog; versions follow SemVer.
 
+## [Unreleased]
+
+### Added
+
+- `docs/admin-panel.md`: roadmap for the admin panel & services track (track
+  A) — web dashboard per Sachin's 16-module checklist, mapping each module to
+  SwiftFetch (update feed + force-update/version control highest priority,
+  feature flags, licensing + device management, payments + coupons, opt-in
+  analytics; RBAC + audit log as foundations; orders/vendors/moderation
+  marked not applicable). Track-A milestones A0–A4 slotted parallel to the
+  desktop M1–M6 with two hard gates (distribution control before v1.0
+  release, licensing before the M5 paywall).
+
 ## [0.1.0] — 2026-10-05
 
 ### Milestone 0 — Project scaffolding

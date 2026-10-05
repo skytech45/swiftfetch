@@ -146,7 +146,18 @@ hourly quotas, PAC + enterprise auth, CLI, remote management, checksum UI.
 | AV/EDR false positives on our binaries | EV code signing; reproducible builds; SmartScreen reputation; boring installer |
 | Single-founder bandwidth | MVP ruthlessly scoped; milestone-by-milestone build with hard acceptance gates |
 
-## 9. Open product questions
+## 9. Admin panel & services (web dashboard)
+
+Per Sachin's 16-module admin checklist (2026-10-05), a web admin dashboard
+and its backing services are a committed part of the product — the control
+surface for version control/force-update, feature flags, licensing/device
+management, payments/coupons, and opt-in analytics. Full mapping and the
+track-A milestone plan live in [admin-panel.md](admin-panel.md). Summary of
+verdicts: **build** modules 1, 3, 4, 5, 6, 9, 10, 11, 12, 15, 16 (16 =
+highest priority, required before the first public release); **thin slice**
+module 2; **defer** module 8; **not applicable** modules 7, 13, 14.
+
+## 10. Open product questions
 
 1. Final product name (trademark/domain check before Phase 2 marketing).
 2. ~~Tech stack~~ — resolved: Rust + Tauri v2 (React 18 UI). Native C/C++ and
