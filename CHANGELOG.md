@@ -36,14 +36,17 @@ Keep a Changelog; versions follow SemVer.
   truncated-206 resets, wrong Content-Length, ETag swaps, request log.
 - **Crash harness** (`sf-engine-child` bin): downloads with a hard-exit
   (kill -9 equivalent) after N bytes for crash-recovery testing.
-- **Acceptance suite** (`tests/m1_acceptance.rs`, 11 tests): 100 MiB × 8
-  segments with ≥3× measured speedup and exact journal sums; kill -9 at
-  50% → resume → SHA-256 match; randomized kill-offset property test;
-  non-resumable-server downgrade with user notice; pause→relaunch→resume;
-  expiring-URL transparency; global limiter 512 KiB/s within ±10%;
-  per-download override; dynamic rebalancing beats static chunking
-  (journal shows the splits); mid-download entity change → clean restart
-  to the new content; wrong Content-Length fails cleanly.
+- **Acceptance suite** (`tests/m1_acceptance.rs`): 100 MiB × 8 segments
+  with exact journal sums, 8 participating connections and SHA-256 match
+  (runs in CI); the wall-time speedup comparison (≥3× on reference
+  hardware, ~5× locally) is a separate `--ignored` test because shared
+  3-vCPU CI runners measure as low as 1.3× — per the no-flaky-tests rule.
+  Plus: kill -9 at 50% → resume → SHA-256 match; randomized kill-offset
+  property test; non-resumable-server downgrade with user notice;
+  pause→relaunch→resume; expiring-URL transparency; global limiter
+  512 KiB/s within ±10%; per-download override; dynamic rebalancing beats
+  static chunking (journal shows the splits); mid-download entity change
+  → clean restart to the new content; wrong Content-Length fails cleanly.
 
 ### Added
 
