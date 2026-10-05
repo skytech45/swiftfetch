@@ -1,0 +1,15 @@
+# Rust
+/target/
+
+# Node
+node_modules/
+dist/
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+
+# Mobile icon variants (desktop-first; not in scope)
+apps/desktop/src-tauri/icons/android/
+apps/desktop/src-tauri/icons/ios/

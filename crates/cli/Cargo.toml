@@ -1,0 +1,14 @@
+[package]
+name = "swiftfetch-cli"
+description = "`swiftfetch` headless command-line control for the running app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "swiftfetch"
+path = "src/main.rs"
+
+[lints]
+workspace = true

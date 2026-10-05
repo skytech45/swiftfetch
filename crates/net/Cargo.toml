@@ -1,0 +1,10 @@
+[package]
+name = "swiftfetch-net"
+description = "SwiftFetch networking: proxy (HTTP/SOCKS/PAC), auth (NTLM/Kerberos via system SSP), cookies, TLS"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
