@@ -12,6 +12,7 @@ members = [
     "crates/scheduler",
     "crates/store",
     "crates/torrent",
+    "scripts/test-server",
 ]
 
 [workspace.package]
@@ -22,23 +23,38 @@ version = "0.1.0"
 
 [workspace.lints.clippy]
 pedantic = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
 
 [workspace.lints.rust]
 missing_docs = "warn"
 
 [workspace.dependencies]
+base64 = "0.22"
+bytes = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 dirs = "7"
+futures-util = "0.3"
+md-5 = "0.10"
 refinery = { version = "0.10", features = ["rusqlite"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
 swiftfetch-common = { path = "crates/common" }
+swiftfetch-engine = { path = "crates/engine" }
+swiftfetch-net = { path = "crates/net" }
 swiftfetch-store = { path = "crates/store" }
+swiftfetch-test-server = { path = "scripts/test-server" }
 tauri = "2"
 tauri-build = "2"
 tempfile = "3"
 thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "io-util", "net", "test-util"] }
+tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
 
 [profile.release]
 lto = "thin"

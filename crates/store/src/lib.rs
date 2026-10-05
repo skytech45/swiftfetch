@@ -175,6 +175,8 @@ pub fn default_data_dir() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)] // tests may panic on failure
+
     use super::*;
 
     #[test]

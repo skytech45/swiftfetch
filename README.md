@@ -65,7 +65,7 @@ cargo run -p swiftfetch-desktop   # launch the desktop app window
 | # | Name | Scope |
 | --- | --- | --- |
 | M0 | Project scaffolding | workspace, CI, docs skeleton, SQLite store, Tauri shell ✅ |
-| M1 | Download engine core | segmentation, resume, speed limiter, test server |
+| M1 | Download engine core | segmentation, resume, speed limiter, test server ✅ |
 | M2 | Desktop app shell | main window, dialogs, categories, queues UI, tray |
 | M3 | Scheduler + automation | scheduler, quotas, clipboard, drag-drop, AV hook, CLI |
 | M4 | Browser + media | MV3/Firefox extensions, native host, HLS/DASH grabber |

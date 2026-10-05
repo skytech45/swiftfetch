@@ -389,7 +389,7 @@ job row's `cookies_json` (needed for resume); they never leave the machine.
 | Milestone | Scope | Exit criteria |
 | --- | --- | --- |
 | M0 ✅ | Workspace, CI, docs skeleton, SQLite store, Tauri shell | builds on 3 OSes; clippy/fmt clean; ping round-trip; DB created with WAL verified |
-| M1 | Download engine core | 100 MiB × 8-segment speedup; kill -9 resume; expiring-URL refresh; limiter ±10%; rebalancing improves time |
+| M1 ✅ | Download engine core | 100 MiB × 8-segment speedup; kill -9 resume; expiring-URL refresh; limiter ±10%; rebalancing improves time — all green (2026-10-05) |
 | M2 | Desktop app shell | main window/dialogs/categories/queues/tray; E2E smoke green |
 | M3 | Scheduler, quotas, clipboard, drag-drop, AV hook, CLI | scheduler fires on time; quota gates; EICAR flagged; CLI round-trips |
 | M4 | Browser extensions + native host + media | capture with cookies forwarded; HLS AES-128 + DASH merge; DRM aborts cleanly |

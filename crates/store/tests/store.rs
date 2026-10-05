@@ -1,6 +1,8 @@
 //! Integration tests: WAL mode, schema v1 completeness, migration
 //! idempotence and foreign-key enforcement.
 
+#![allow(clippy::unwrap_used, clippy::expect_used)] // tests may panic on failure
+
 use swiftfetch_store::Store;
 
 const EXPECTED_TABLES: [&str; 9] = [

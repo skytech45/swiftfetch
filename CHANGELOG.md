@@ -5,6 +5,46 @@ Keep a Changelog; versions follow SemVer.
 
 ## [Unreleased]
 
+### Milestone 1 — Download engine core (2026-10-05)
+
+#### Added
+
+- **Download engine** (`swiftfetch-engine`): HEAD+range probing with
+  Yes/No/Unknown resume-capability detection (incl. `If-RangeOnly`
+  conditional-resume class); dynamic multi-connection segmentation
+  (default 8, configurable 1–32, 1 MiB minimum segment); 500 ms EWMA
+  supervisor with split-largest work-stealing, <50%-of-mean slow-window
+  splitting and 8 KiB/s stall reassignment; per-segment retry budgets that
+  survive stall reassignment (new ranges inherit the counter; URL-refresh
+  requeues reset it); token-bucket speed limiting (global + per-download
+  buckets, FIFO waiters, live rate changes, unlimited = rate 0); SHA-256 +
+  MD5 streamed during write with `Digest:`/`Content-MD5` verification;
+  URL auto-refresh on 403/404/410 with coalescing (≤ 3 attempts);
+  unknown-length (chunked) single-connection mode; pre-allocation above
+  100 MiB; positioned writes through a single per-job disk writer with
+  ≤ 1 s fsync cadence and journal checkpoints at most once per second;
+  crash recovery (`Engine::open` marks interrupted + clamps bookkeeping to
+  bytes on disk); pause/resume/cancel; atomic rename + history rows.
+- **Segment retry policy**: refresh-worthy failures (403/404/410) surface
+  immediately to the supervisor for URL refresh — they never consume the
+  retry budget; transport/EOF failures retry with quadratic backoff capped
+  at 8 s.
+- **HTTP client** (`swiftfetch-net`): rustls, ≤ 10 redirects, optional
+  proxy and per-job user agent; no total-request timeout by design.
+- **Scripted test server** (`scripts/test-server`): fixed-body routes with
+  per-connection throttling, slow-Nth-connection, expiring URLs (410),
+  truncated-206 resets, wrong Content-Length, ETag swaps, request log.
+- **Crash harness** (`sf-engine-child` bin): downloads with a hard-exit
+  (kill -9 equivalent) after N bytes for crash-recovery testing.
+- **Acceptance suite** (`tests/m1_acceptance.rs`, 11 tests): 100 MiB × 8
+  segments with ≥3× measured speedup and exact journal sums; kill -9 at
+  50% → resume → SHA-256 match; randomized kill-offset property test;
+  non-resumable-server downgrade with user notice; pause→relaunch→resume;
+  expiring-URL transparency; global limiter 512 KiB/s within ±10%;
+  per-download override; dynamic rebalancing beats static chunking
+  (journal shows the splits); mid-download entity change → clean restart
+  to the new content; wrong Content-Length fails cleanly.
+
 ### Added
 
 - `docs/admin-panel.md`: roadmap for the admin panel & services track (track
