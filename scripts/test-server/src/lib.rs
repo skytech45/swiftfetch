@@ -528,7 +528,9 @@ async fn respond(
         (0, route.throttle_bps)
     };
 
-    let chunk = 32 * 1024;
+    // 128 KiB pacing chunks: fewer timer wakes per connection, which
+    // matters on constrained CI runners (3-vCPU VMs).
+    let chunk = 128 * 1024;
     let mut offset = 0usize;
     while offset < effective_len {
         let take = chunk.min(effective_len - offset);
