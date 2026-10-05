@@ -283,11 +283,7 @@ pub async fn open_range(
         url,
     )
     .await?;
-    eprintln!(
-        "[conn] GET {} -> {} (range {start}-{end})",
-        url,
-        response.status()
-    );
+
     match response.status() {
         StatusCode::PARTIAL_CONTENT => {
             let cr = response

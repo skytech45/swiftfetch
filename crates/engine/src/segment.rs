@@ -308,7 +308,7 @@ pub(crate) async fn run_segment(
                             }
                             match ack_rx.await {
                                 Ok(Ok(())) => {
-                                    eprintln!("[seg] acked {limit}");
+
                                 }
                                 Ok(Err(err)) => {
                                     let _ = seg_tx

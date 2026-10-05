@@ -124,7 +124,6 @@ impl DiskWriter {
                     };
                     match msg {
                         Some(WriterMsg::Write { offset, data, ack }) => {
-                            eprintln!("[writer] write {} at {}", data.len(), offset);
                             let res = tokio::task::block_in_place(|| {
                                 positioned_write(&file, offset, &data).map(|()| {
                                     hasher.update(&data);

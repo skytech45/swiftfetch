@@ -886,8 +886,12 @@ async fn split_segment(
             .end
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if old_end == u64::MAX {
+            // Unknown-length segments have no splittable finite range.
+            return;
+        }
         let done = seg.done.load(Ordering::Relaxed);
-        let remaining = old_end.saturating_sub(seg.start + done - 1);
+        let remaining = (old_end + 1).saturating_sub(seg.start + done);
         if remaining <= 2 * shared.config.min_segment {
             return;
         }
