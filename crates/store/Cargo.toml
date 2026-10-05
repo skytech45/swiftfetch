@@ -1,0 +1,21 @@
+[package]
+name = "swiftfetch-store"
+description = "SQLite (WAL) persistence for SwiftFetch: schema migrations and data access"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+dirs = { workspace = true }
+refinery = { workspace = true }
+rusqlite = { workspace = true }
+swiftfetch-common = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
