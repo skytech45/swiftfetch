@@ -37,7 +37,7 @@ the "SwiftFetch Build Prompt" document; the architecture contract is
 swiftfetch/
 ├── apps/desktop/       Tauri v2 app (React+TS UI, Rust commands)
 ├── crates/             engine · net · store · scheduler · media · grabber
-│                       torrent · native-host · cli · common
+│                       sites/youtube · torrent · native-host · cli · common
 ├── extensions/         shared TS core + chrome/firefox manifests (M4)
 ├── sidecars/ffmpeg/    per-platform ffmpeg binaries (M4)
 ├── scripts/            dev utilities (icon generator, test server, …)
@@ -68,7 +68,7 @@ cargo run -p swiftfetch-desktop   # launch the desktop app window
 | M1 | Download engine core | segmentation, resume, speed limiter, test server ✅ |
 | M2 | Desktop app shell | main window, dialogs, categories, queues UI, tray |
 | M3 | Scheduler + automation | scheduler, quotas, clipboard, drag-drop, AV hook, CLI |
-| M4 | Browser + media | MV3/Firefox extensions, native host, HLS/DASH grabber |
+| M4 | Browser + media | MV3/Firefox extensions, native host, HLS/DASH grabber, YouTube one-click (§12.4) |
 | M5 | Depth + packaging | site grabber, mirrors, i18n, updater, installers |
 | M6 | Differentiators | BitTorrent, checksums, plugin API, hardening |
 | A0–A4 | Admin panel & services | web dashboard: update feed + version control/force-update, feature flags, licensing + device binding, payments + coupons, opt-in analytics — see [docs/admin-panel.md](docs/admin-panel.md) |

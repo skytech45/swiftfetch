@@ -57,6 +57,23 @@ paywall.
 **v1.0 exit:** all metrics below at target; benchmark parity vs IDM (±10%);
 zero critical data-loss bugs; privacy policy published.
 
+### YouTube one-click (M4 addendum, PRD 6 Oct 2026 §7.3b)
+
+FR-036 **YouTube one-click quality enumeration** (Must): parse the watch
+page's `player_response` streamingData (formats + adaptiveFormats) and
+enumerate all qualities via the itag table (144p–1080p+, video-only /
+audio-only pairs, legacy progressive). FR-037 **Cipher solver** (Must):
+sig/n deciphering as a hot-updatable module — never hardcoded; on stale
+solver show "YouTube changed — extractor update required" after exactly
+one solve attempt, no retry storms. FR-038 **Stream URL expiry** (Should):
+begin download immediately after selection; re-resolve (not blind-retry)
+when `expire=` passes. FR-039 **Extension on its own release train**
+(Should): video-grabbing fixes ship without full app updates. Panel
+behavior: itag-derived quality ladder (best pre-selected), draggable,
+mini mode; SRT/VTT sidecars surface as separate entries when enabled in
+the file-type list. Arms-race posture: 403s / ~50–150 KB/s throttling on
+googlevideo.com = stale-extractor signal, never a generic download error.
+
 ### v2.0 — "Beyond IDM" (M6+, gap exploiters)
 
 BitTorrent (magnet + .torrent, per-torrent limits) · checksum verification
@@ -145,6 +162,7 @@ hourly quotas, PAC + enterprise auth, CLI, remote management, checksum UI.
 | Video sites change players/formats | modular site handlers + quick updates; DRM explicitly unsupported (smaller breakage surface) |
 | AV/EDR false positives on our binaries | EV code signing; reproducible builds; SmartScreen reputation; boring installer |
 | Single-founder bandwidth | MVP ruthlessly scoped; milestone-by-milestone build with hard acceptance gates |
+| YouTube player-JS rotation breaks the cipher solver (High/High) | solver is an isolated hot-updatable module behind a trait; extractor ships on a fast independent channel; stale-solver UX after exactly one attempt — never retry storms |
 
 ## 9. Admin panel & services (web dashboard)
 

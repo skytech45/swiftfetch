@@ -273,6 +273,43 @@ cancellable countdown**.
 - **DRM:** DRM-signaled streams abort with a clear "protected content — not
   supported" message. No CDM, no license-server calls, no key extraction.
 
+### 4.4b YouTube site module (`swiftfetch-sites-youtube`, planned M4)
+
+One-click pipeline (non-DRM only), per System Design §5.5 YouTube module:
+
+1. **Player data** — extension content script reads the watch page's
+   embedded `player_response` JSON (`ytInitialPlayerResponse.streamingData`);
+   fallback: engine calls Innertube `/player` with browser cookies/UA via
+   the native host. Parse `formats` (legacy progressive: itag 18/22) and
+   `adaptiveFormats` (video-only + audio-only pairs — no pre-merged 1080p).
+2. **itag table (data, not logic)** — static table: 160=144p, 133=240p,
+   134=360p, 135=480p, 136=720p, 137=1080p (H.264/MP4); 242–248 VP9/WebM;
+   394–402 AV1/MP4; audio 139/140 AAC, 249–251 Opus. Unknown future itags
+   degrade gracefully as "unknown format", never a crash. Each entry
+   exposes (itag, container, codec, width, height, fps, bitrate,
+   audioSampleRate) to the quality picker.
+3. **Cipher solver (hot-updatable module boundary)** — sig (signature) and
+   n (throttling) params are decoded by algorithms in YouTube's rotating
+   player JS. The solver fetches the current base player JS at runtime,
+   extracts the sig/n functions, evaluates them in an embedded JS runtime,
+   behind a narrow `CipherSolver` trait. NEVER vendor a hardcoded cipher.
+   On solve failure: exactly one attempt, then the clean error "YouTube
+   changed — extractor update required" (no 403 retry storms).
+4. **Quality pairing + merge** — user picks a video rendition → auto-pair
+   best audio (prefer AAC for MP4 compat) → both download in parallel
+   through the §4.2 segmenter with page cookies/UA/referer → ffmpeg
+   `-c copy -movflags +faststart` (prefer H.264+AAC → .mp4).
+5. **URL expiry** — stream URLs carry short `expire=` timestamps; start
+   immediately after selection; re-resolve (fresh player-data fetch, not
+   blind retry) if a URL dies mid-queue.
+6. **Stale-solver detection** — sudden 403s on googlevideo.com or throttle
+   to ~50–150 KB/s = extractor-stale signal → "YouTube changed — updating
+   extractor" + fast extractor update channel, never a generic error.
+7. **Scope limits (hard)** — DRM/Widevine-signaled → abort with the
+   "protected content" message, no license-server contact. Livestreams
+   out of scope. Rental/Premium-only → "not supported". Stream URLs never
+   written to disk or logs with secrets attached.
+
 ### 4.5 Net (`swiftfetch-net`, planned M1/M4)
 
 Config model: `{ mode: system|manual|pac|none, manual: {http, https, socks5,
@@ -392,7 +429,7 @@ job row's `cookies_json` (needed for resume); they never leave the machine.
 | M1 ✅ | Download engine core | 100 MiB × 8-segment speedup; kill -9 resume; expiring-URL refresh; limiter ±10%; rebalancing improves time — all green (2026-10-05) |
 | M2 | Desktop app shell | main window/dialogs/categories/queues/tray; E2E smoke green |
 | M3 | Scheduler, quotas, clipboard, drag-drop, AV hook, CLI | scheduler fires on time; quota gates; EICAR flagged; CLI round-trips |
-| M4 | Browser extensions + native host + media | capture with cookies forwarded; HLS AES-128 + DASH merge; DRM aborts cleanly |
+| M4 | Browser extensions + native host + media + YouTube one-click | capture with cookies forwarded; HLS AES-128 + DASH merge; DRM aborts cleanly; YouTube quality picker lists ≥3 itag-derived resolutions; 1080p one-click → merged MP4; stale-solver fixture → clean error ≤1 attempt |
 | M5 | Site grabber, mirrors, i18n, updater, packaging | robots honored; mirror failover; EN+HI complete; signed installers smoke-tested |
 | M6 | Torrents, checksums, plugin surface, hardening | torrent round-trip; checksum states; fuzz/audit clean; RSS < 300 MiB @ 1 GiB |
 

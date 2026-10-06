@@ -10,6 +10,7 @@ members = [
     "crates/native-host",
     "crates/net",
     "crates/scheduler",
+    "crates/sites/youtube",
     "crates/store",
     "crates/torrent",
     "scripts/test-server",
@@ -44,6 +45,7 @@ sha2 = "0.10"
 swiftfetch-common = { path = "crates/common" }
 swiftfetch-engine = { path = "crates/engine" }
 swiftfetch-net = { path = "crates/net" }
+swiftfetch-sites-youtube = { path = "crates/sites/youtube" }
 swiftfetch-store = { path = "crates/store" }
 swiftfetch-test-server = { path = "scripts/test-server" }
 tauri = "2"

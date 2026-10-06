@@ -146,8 +146,14 @@ async fn segmented_download_journal_integrity() {
     let snapshot = engine2.snapshot(&id2).expect("snapshot");
     let sum: u64 = snapshot.segments.iter().map(|s| s.done).sum();
     assert_eq!(sum, len as u64, "segment journal must sum to file size");
+    // Work stealing splits segments mid-flight, so the journal ends with
+    // MORE rows than the initial 8 — assert every planned connection
+    // carried bytes (>= 8 distinct segments with progress).
     let active = snapshot.segments.iter().filter(|s| s.done > 0).count();
-    assert_eq!(active, 8, "all 8 connections must have carried bytes");
+    assert!(
+        active >= 8,
+        "all 8 planned connections must have carried bytes (got {active})"
+    );
     let got = sha256_file(&path).expect("hash");
     assert_eq!(to_hex(got.bytes()), sha_of(&data));
 }

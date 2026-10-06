@@ -3430,6 +3430,10 @@ name = "swiftfetch-scheduler"
 version = "0.1.0"
 
 [[package]]
+name = "swiftfetch-sites-youtube"
+version = "0.1.0"
+
+[[package]]
 name = "swiftfetch-store"
 version = "0.1.0"
 dependencies = [

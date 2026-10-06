@@ -1,0 +1,10 @@
+[package]
+name = "swiftfetch-sites-youtube"
+description = "SwiftFetch YouTube one-click site module: player_response parsing, itag table, hot-updatable cipher solver"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
