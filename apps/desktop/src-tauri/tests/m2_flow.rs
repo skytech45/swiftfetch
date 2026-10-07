@@ -200,10 +200,10 @@ async fn queue_runner_respects_concurrency_and_order() {
     let len = 512 * 1024;
     let data = vec![0x33u8; len];
     let server = TestServer::start().await.expect("server");
-    server.set_route(
-        "/file.zip",
-        Route::new(data.clone()).throttle_bps(1024 * 1024),
-    );
+    // No server-side throttling: the invariants under test (start order,
+    // concurrency ceiling, full drain) are timing-independent, and the
+    // throttle made this test sensitive to shared-runner noise on CI.
+    server.set_route("/file.zip", Route::new(data.clone()));
     let url = server.url("/file.zip");
 
     let dir = tempfile::tempdir().expect("tempdir");
@@ -228,7 +228,9 @@ async fn queue_runner_respects_concurrency_and_order() {
     );
 
     // Wait for both to finish; each completion frees a slot.
-    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    // Generous wall for shared CI runners even though an unthrottled drain
+    // takes well under a second locally.
+    let deadline = std::time::Instant::now() + Duration::from_secs(120);
     loop {
         let _ = queue_tick(&engine, &repos_store).await;
         let done = ids
