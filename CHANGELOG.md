@@ -5,6 +5,49 @@ Keep a Changelog; versions follow SemVer.
 
 ## [Unreleased]
 
+### Milestone 2 — Desktop app shell (2026-10-07)
+
+#### Added
+
+- **Desktop app** (Tauri v2 + React 18): main window with toolbar,
+  category sidebar, sortable download table with live progress bars,
+  status bar; Add-URL dialog (category/queue pickers, connections slider
+  1–32, start now / add-to-queue / queue-later), per-download segment
+  progress dialog, queue panel (create/start/stop/delete/reorder), and a
+  settings dialog (global speed limit, theme).
+- **State layer**: typed SQLite repositories (`crates/store` repos module)
+  — downloads, categories (6 seeded defaults + extension-based
+  auto-categorization), queues (ordering, move clamping, concurrency limit
+  1–5), settings; refinery migrations; two-connection split (engine journal
+  + UI repos) on one WAL database.
+- **Queue runner**: 500 ms tick + wake-notify loop starting queued/paused/
+  interrupted jobs up to each active queue's concurrency limit, in job
+  order; completion notifications via the OS notification plugin.
+- **Event bridge**: engine `JobEvent` broadcast forwarded to the webview as
+  `download://event`; UI refreshes are event-driven with a ≤ 1 Hz
+  dirty-check poll fallback.
+- **Tray**: show/hide, pause-all, resume-all, quit — menu built from live
+  engine snapshots.
+- **Engine hardening**: resumed jobs persist the `downloading` state on
+  entry (queue runners and the UI count in-flight downloads by the
+  journaled state); destination resolution consults final paths claimed by
+  active rows so paused copies of the same URL never collide; jobs paused
+  before their first start are planned fresh on resume (an empty plan no
+  longer finalizes an empty part file — E_SIZE_MISMATCH fix); unknown-
+  length segments are never split; saturating arithmetic in progress math.
+- **i18n + theming**: en/hi locale dictionaries with a React context
+  hook; light/dark themes via CSS variables.
+- **Integration tests** (`tests/m2_flow.rs`): add → auto-categorize →
+  progress events → complete → pause → engine restart → rehydrate →
+  resume; and a queue-runner drain test (5 jobs, concurrency 2, order
+  preserved) mirroring the Tauri command logic 1:1.
+
+#### Notes
+
+- Tauri e2e (WebDriver) smoke is deferred to M3 tooling — WebView2 exposes
+  no accessibility tree for UIA, so the M2 flow is covered by Rust
+  integration tests mirroring command logic plus manual launch smoke.
+
 ### Milestone 1 — Download engine core (2026-10-05)
 
 #### Added

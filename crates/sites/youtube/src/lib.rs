@@ -1,4 +1,4 @@
-//! SwiftFetch YouTube one-click site module (non-DRM only).
+//! `SwiftFetch` `YouTube` one-click site module (non-DRM only).
 //!
 //! Build Prompt §12.4: floating button → quality list → one click → merged
 //! MP4. Pipeline: player data (watch-page `player_response` JSON or Innertube
@@ -15,5 +15,5 @@
 //! Implementation lands in Milestone 4 (cipher solver ships as a
 //! hot-updatable module behind the `CipherSolver` trait — never a vendored
 //! hardcoded cipher; on solve failure exactly one attempt, then the clean
-//! error "YouTube player changed — extractor update required"). This crate
+//! error "`YouTube` player changed — extractor update required"). This crate
 //! is a compiling scaffold until then.
