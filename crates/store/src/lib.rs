@@ -11,6 +11,8 @@
 //!
 //! [refinery]: https://docs.rs/refinery
 
+pub mod repos;
+
 use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
