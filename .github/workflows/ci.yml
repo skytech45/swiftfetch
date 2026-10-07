@@ -46,7 +46,9 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Tests
-        run: cargo test --workspace
+        run: cargo test --workspace -- --nocapture
+        env:
+          RUST_LOG: swiftfetch=debug
 
       - name: Build
         run: cargo build --workspace
