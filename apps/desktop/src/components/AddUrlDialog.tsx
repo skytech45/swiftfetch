@@ -8,16 +8,19 @@ type StartMode = "now" | "queue" | "later";
 export function AddUrlDialog({
   categories,
   queues,
+  initialUrl = "",
   onClose,
   onAdded,
 }: {
   categories: CategoryView[];
   queues: QueueView[];
+  /** Prefilled URL (drag-drop / clipboard capture). */
+  initialUrl?: string;
   onClose: () => void;
   onAdded: () => void;
 }) {
   const { t } = useI18n();
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl);
   const [categoryId, setCategoryId] = useState("");
   const [queueId, setQueueId] = useState("");
   const [maxConns, setMaxConns] = useState(8);

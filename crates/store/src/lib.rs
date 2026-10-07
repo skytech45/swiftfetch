@@ -150,6 +150,31 @@ impl Store {
         Ok(value)
     }
 
+    /// Runs `f` inside a `BEGIN IMMEDIATE` transaction: the write lock is
+    /// taken up front, so cross-process writers (the CLI) serialize cleanly
+    /// with the GUI's writes while WAL keeps readers proceeding.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError::Sql`] when the transaction or `f` fails; the
+    /// transaction is rolled back on error.
+    pub fn with_conn_immediate<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> rusqlite::Result<T>,
+    ) -> Result<T, StoreError> {
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        match f(&self.conn) {
+            Ok(value) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(value)
+            }
+            Err(err) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(err.into())
+            }
+        }
+    }
+
     fn init(conn: Connection, path: PathBuf) -> Result<Self, StoreError> {
         let applied = conn.query_row("PRAGMA journal_mode = WAL", [], |row| {
             row.get::<_, String>(0)

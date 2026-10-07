@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "./jobs";
 import {
   formatBytes,
@@ -8,6 +8,7 @@ import {
   useJobs,
   type CategoryView,
   type JobView,
+  type QuotaStatusView,
   type QueueView,
 } from "./jobs";
 import { saveTheme, useI18n, useTheme, type Theme } from "./i18n";
@@ -15,6 +16,25 @@ import { AddUrlDialog } from "./components/AddUrlDialog";
 import { ProgressDialog } from "./components/ProgressDialog";
 import { QueuePanel } from "./components/QueuePanel";
 import { SettingsDialog } from "./components/SettingsDialog";
+
+/** One notification bubble (clipboard capture, scheduler, quota). */
+interface Toast {
+  id: number;
+  text: string;
+  /** URL to offer adding (clipboard capture). */
+  url?: string;
+  /** Show a Cancel button (post-action countdown). */
+  cancellable?: boolean;
+}
+
+/** Extracts an http(s)/ftp URL from dropped text/URI-list data. */
+function extractUrl(data: string): string | null {
+  for (const line of data.split("\n")) {
+    const candidate = line.trim().replace(/^URL=/, "");
+    if (/^(https?|ftp):\/\/\S+$/.test(candidate)) return candidate;
+  }
+  return null;
+}
 
 export default function App() {
   const { t, lang, setLang } = useI18n();
@@ -25,9 +45,22 @@ export default function App() {
   const [filter, setFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [addOpen, setAddOpen] = useState(false);
+  const [addUrl, setAddUrl] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [sortDesc, setSortDesc] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [quota, setQuota] = useState<QuotaStatusView | null>(null);
+  const toastSeq = useRef(0);
+
+  const pushToast = useCallback((toast: Omit<Toast, "id">) => {
+    toastSeq.current += 1;
+    const id = toastSeq.current;
+    setToasts((cur) => [...cur, { ...toast, id }]);
+    window.setTimeout(() => {
+      setToasts((cur) => cur.filter((toast2) => toast2.id !== id));
+    }, 8000);
+  }, []);
 
   const refreshMeta = useCallback(() => {
     invoke<CategoryView[]>("list_categories").then(setCategories).catch(() => {});
@@ -42,11 +75,59 @@ export default function App() {
       void e;
     };
     window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", onTheme);
+
+    // M3 automation events (clipboard capture, scheduler, quota, post-action).
+    let disposed = false;
+    const unlisteners: Array<Promise<() => void>> = [];
+    const listen = (event: string, handler: (payload: unknown) => void): void => {
+      unlisteners.push(
+        import("@tauri-apps/api/event").then(({ listen: on }) =>
+          on(event, (e) => handler(e.payload)),
+        ),
+      );
+    };
+    listen("clipboard://url", (payload) => {
+      const url = (payload as { url?: string }).url ?? "";
+      if (url.length > 0) {
+        pushToast({ text: t("toast.clipboard"), url });
+      }
+    });
+    listen("scheduler://fired", (payload) => {
+      const p = payload as { queueId?: string; action?: string };
+      pushToast({
+        text: t(p.action === "open" ? "toast.queueOpened" : "toast.queueClosed"),
+      });
+    });
+    listen("quota://changed", (payload) => {
+      const p = payload as { exhausted?: boolean };
+      pushToast({
+        text: p.exhausted === true ? t("toast.quotaExhausted") : t("toast.quotaResumed"),
+      });
+    });
+    listen("scheduler://post-action", (payload) => {
+      const p = payload as { action?: string };
+      pushToast({
+        text: t("toast.postAction", { action: p.action ?? "shutdown" }),
+        cancellable: true,
+      });
+    });
+    void Promise.all(unlisteners).then((fns) => {
+      if (disposed) for (const f of fns) f();
+    });
+
+    // Quota status for the status bar (10 s cadence is plenty).
+    const quotaTimer = window.setInterval(() => {
+      invoke<QuotaStatusView>("get_quota_status").then(setQuota).catch(() => {});
+    }, 10_000);
+    invoke<QuotaStatusView>("get_quota_status").then(setQuota).catch(() => {});
+
     return () => {
+      disposed = true;
       void un.then((f) => f());
+      window.clearInterval(quotaTimer);
       window.matchMedia("(prefers-color-scheme: dark)").removeEventListener("change", onTheme);
     };
-  }, [refreshMeta]);
+  }, [refreshMeta, pushToast, t]);
 
   const visible = useMemo(() => {
     const filtered =
@@ -120,8 +201,59 @@ export default function App() {
 
   const detailJob = detailId === null ? null : (jobs.find((j) => j.id === detailId) ?? null);
 
+  // Drag a URL onto the window → open the add dialog prefilled (M3).
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const url = extractUrl(e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain"));
+      if (url !== null) {
+        setAddUrl(url);
+        setAddOpen(true);
+      }
+    },
+    [],
+  );
+
   return (
-    <main className="shell">
+    <main className="shell" onDragOver={onDragOver} onDrop={onDrop}>
+      {toasts.length > 0 && (
+        <div className="toasts" role="status">
+          {toasts.map((toast) => (
+            <div key={toast.id} className="toast">
+              <span>{toast.text}</span>
+              {toast.url !== undefined && (
+                <button
+                  type="button"
+                  className="mini"
+                  onClick={() => {
+                    setAddUrl(toast.url ?? "");
+                    setAddOpen(true);
+                    setToasts((cur) => cur.filter((t2) => t2.id !== toast.id));
+                  }}
+                >
+                  {t("toolbar.addUrl")}
+                </button>
+              )}
+              {toast.cancellable === true && (
+                <button
+                  type="button"
+                  className="mini"
+                  onClick={() => {
+                    void invoke("cancel_post_action");
+                    setToasts((cur) => cur.filter((t2) => t2.id !== toast.id));
+                  }}
+                >
+                  {t("toast.cancelPost")}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <header className="header">
         <span className="logo" aria-hidden="true" />
         <div>
@@ -262,15 +394,30 @@ export default function App() {
           {t("status.activeCount", { count: activeCount })} ·{" "}
           {t("status.globalSpeed")}: {formatSpeed(totalSpeed)}
         </span>
+        {quota !== null &&
+          (quota.hourlyLimit !== null || quota.dailyLimit !== null) && (
+            <span className={quota.exhausted ? "quota exhausted" : "quota"}>
+              {t("status.quota")}:{" "}
+              {quota.hourlyLimit !== null &&
+                `${formatBytes(quota.hourlyUsed)} / ${formatBytes(quota.hourlyLimit)} `}
+              {quota.dailyLimit !== null &&
+                `${formatBytes(quota.dailyUsed)} / ${formatBytes(quota.dailyLimit)}`}
+            </span>
+          )}
       </footer>
 
       {addOpen && (
         <AddUrlDialog
           categories={categories}
           queues={queues}
-          onClose={() => setAddOpen(false)}
+          initialUrl={addUrl}
+          onClose={() => {
+            setAddOpen(false);
+            setAddUrl("");
+          }}
           onAdded={() => {
             setAddOpen(false);
+            setAddUrl("");
             refreshMeta();
           }}
         />

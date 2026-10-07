@@ -5,6 +5,56 @@ Keep a Changelog; versions follow SemVer.
 
 ## [Unreleased]
 
+### Milestone 3 — Scheduler + automation (2026-10-07)
+
+#### Added
+
+- **`swiftfetch-scheduler`** (crates/scheduler): `Schedule` model
+  (once / daily / daily-window with cross-midnight support / periodic with
+  jitter) persisted as JSON on the `queues` table; a single tokio timer
+  service owning a min-heap of `(next_fire, queue_id)` with an injectable
+  clock; persisted timers survive restart — the missed-fire policy runs an
+  overdue open if it is less than 15 minutes late, else marks it skipped;
+  hourly + daily **quota windows** (`QuotaLedger`, pure logic, persisted
+  snapshot) with a pause-everything gate; post-queue power actions
+  (**sleep / hibernate / shutdown**) behind a 60-second cancellable
+  countdown — Win32 `SetSuspendState` / `InitiateSystemShutdownExW` with
+  per-call `SE_SHUTDOWN_NAME` (never elevated), `osascript` on macOS,
+  logind (`loginctl`/`systemctl`, argv-only) on Linux.
+- **AV auto-scan hook** (engine): every completed download is scanned
+  before the rename into its destination. `AvScanner` trait +
+  Windows-Defender implementation via `MpCmdRun.exe` located at runtime
+  (stable + Platform paths); flagged files are deleted and fail with
+  `E_MALWARE_DETECTED`; a scanner that cannot run never blocks downloads.
+  CI tests use a deterministic content scanner; the real-EICAR check runs
+  locally (`--ignored`) and passes (Defender real-time blocks the write at
+  os error 225 or the on-demand scan flags it).
+- **CLI** (`crates/cli` → `swiftfetch` binary): `add / list / status /
+  pause / resume / cancel / queues / start-queue / stop-queue` over the
+  **same SQLite database** — writes staged under `BEGIN IMMEDIATE`
+  (single-writer discipline); the app consumes staged downloads and
+  control commands within ~1 s and acts through the live engine.
+- **Desktop automation**: queue scheduler service (fires `scheduler://fired`,
+  opens/closes queues and pauses in-flight jobs on window close);
+  quota gate in the queue runner (pauses everything when a limit is
+  exhausted, auto-resumes on window reset, `quota://changed` events, live
+  quota readout in the status bar); post-action countdown with a UI cancel
+  button; **clipboard URL monitor** (opt-in, surfaces a toast with an Add
+  button, `clipboard://url`); **drag-and-drop** URLs onto the window opens
+  the add dialog prefilled.
+- **UI**: per-queue schedule editor (kind/time/post-action), quota fields
+  and clipboard toggle in Settings, toast stack, quota status chip;
+  schedule editor button (⏱) in the queue panel.
+- **Store**: migration v2 (`staged_downloads`, `cli_commands`);
+  `Store::with_conn_immediate` for cross-process writers; queue rows now
+  expose `schedule_json` + `post_action`.
+
+#### Notes
+
+- `QuotaConfig` serializes camelCase (`hourlyLimit`/`dailyLimit`) to match
+  the UI round-trip; the ledger snapshot persists under `quota.ledger`.
+- The clipboard monitor is opt-in and default-off.
+
 ### Milestone 2 — Desktop app shell (2026-10-07)
 
 #### Added

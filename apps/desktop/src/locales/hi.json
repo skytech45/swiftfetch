@@ -44,7 +44,8 @@
     "interrupted": "बाधित",
     "cancelled": "रद्द",
     "globalSpeed": "कुल गति",
-    "activeCount": "{count} सक्रिय"
+    "activeCount": "{count} सक्रिय",
+    "quota": "कोटा"
   },
   "addUrl": {
     "title": "डाउनलोड जोड़ें",
@@ -77,7 +78,11 @@
     "themeDark": "डार्क",
     "language": "भाषा",
     "globalLimit": "वैश्विक गति सीमा (KiB/s, खाली = असीमित)",
-    "save": "सहेजें"
+    "save": "सहेजें",
+    "quota": "डेटा कोटा (MiB, खाली = असीमित)",
+    "quotaHourly": "प्रति घंटा सीमा",
+    "quotaDaily": "प्रति दिन सीमा",
+    "clipboard": "क्लिपबोर्ड पर URL देखें"
   },
   "delete": {
     "confirm": "यह डाउनलोड हटाएं?",

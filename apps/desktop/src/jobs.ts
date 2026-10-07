@@ -29,6 +29,18 @@ export interface QueueView {
   maxConcurrent: number;
   isActive: boolean;
   jobIds: string[];
+  /** Scheduler JSON (M3); null = manual queue. */
+  scheduleJson: string | null;
+  /** Post-drain action: none | sleep | hibernate | shutdown. */
+  postAction: string;
+}
+
+export interface QuotaStatusView {
+  hourlyLimit: number | null;
+  dailyLimit: number | null;
+  hourlyUsed: number;
+  dailyUsed: number;
+  exhausted: boolean;
 }
 
 export interface SegmentView {

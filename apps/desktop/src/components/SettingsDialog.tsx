@@ -6,6 +6,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
   const [limit, setLimit] = useState<string>("");
   const [theme, setTheme] = useState<Theme>("system");
+  const [hourlyMib, setHourlyMib] = useState<string>("");
+  const [dailyMib, setDailyMib] = useState<string>("");
+  const [clipboard, setClipboard] = useState(false);
 
   useEffect(() => {
     invoke<string | null>("get_setting", { key: "speed.global_kbps" })
@@ -18,6 +21,19 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         if (v !== null) setTheme(JSON.parse(v) as Theme);
       })
       .catch(() => {});
+    invoke<string | null>("get_setting", { key: "quota.config" })
+      .then((v) => {
+        if (v === null) return;
+        const cfg = JSON.parse(v) as { hourlyLimit: number | null; dailyLimit: number | null };
+        if (cfg.hourlyLimit !== null) setHourlyMib(String(Math.round(cfg.hourlyLimit / (1024 * 1024))));
+        if (cfg.dailyLimit !== null) setDailyMib(String(Math.round(cfg.dailyLimit / (1024 * 1024))));
+      })
+      .catch(() => {});
+    invoke<string | null>("get_setting", { key: "clipboard.monitor" })
+      .then((v) => {
+        if (v !== null) setClipboard(JSON.parse(v) as boolean);
+      })
+      .catch(() => {});
   }, []);
 
   const save = async (): Promise<void> => {
@@ -25,6 +41,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
     await invoke("set_global_speed", {
       kibPerS: parsed !== null && Number.isFinite(parsed) && parsed > 0 ? parsed : null,
     });
+    const toBytes = (text: string): number | null => {
+      const n = Number(text);
+      return text.trim().length > 0 && Number.isFinite(n) && n > 0
+        ? Math.round(n * 1024 * 1024)
+        : null;
+    };
+    await invoke("set_setting", {
+      key: "quota.config",
+      value: JSON.stringify({ hourlyLimit: toBytes(hourlyMib), dailyLimit: toBytes(dailyMib) }),
+    });
+    await invoke("set_setting", { key: "clipboard.monitor", value: JSON.stringify(clipboard) });
     await saveTheme(theme);
     // Theme applies immediately via useTheme's persisted read on next mount;
     // apply live here too.
@@ -52,6 +79,37 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             placeholder="∞"
             onChange={(e) => setLimit(e.target.value)}
           />
+        </label>
+        <fieldset className="quota-fields">
+          <legend>{t("settings.quota")}</legend>
+          <label>
+            {t("settings.quotaHourly")}
+            <input
+              type="number"
+              min={0}
+              value={hourlyMib}
+              placeholder="∞"
+              onChange={(e) => setHourlyMib(e.target.value)}
+            />
+          </label>
+          <label>
+            {t("settings.quotaDaily")}
+            <input
+              type="number"
+              min={0}
+              value={dailyMib}
+              placeholder="∞"
+              onChange={(e) => setDailyMib(e.target.value)}
+            />
+          </label>
+        </fieldset>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={clipboard}
+            onChange={(e) => setClipboard(e.target.checked)}
+          />
+          {t("settings.clipboard")}
         </label>
         <label>
           {t("settings.theme")}

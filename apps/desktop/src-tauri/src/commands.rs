@@ -47,6 +47,10 @@ pub struct QueueView {
     pub max_concurrent: i64,
     pub is_active: bool,
     pub job_ids: Vec<String>,
+    /// Scheduler JSON (M3); `None` = manual queue.
+    pub schedule_json: Option<String>,
+    /// Post-drain action: `none|sleep|hibernate|shutdown`.
+    pub post_action: String,
 }
 
 async fn db<F, T>(state: &Arc<AppState>, f: F) -> Result<T, String>
@@ -327,6 +331,8 @@ pub async fn list_queues(state: tauri::State<'_, Arc<AppState>>) -> Result<Vec<Q
             max_concurrent: q.max_concurrent,
             is_active: q.is_active != 0,
             job_ids: ids,
+            schedule_json: q.schedule_json,
+            post_action: q.post_action,
         });
     }
     Ok(out)
@@ -452,4 +458,64 @@ pub async fn set_setting(
     value: String,
 ) -> Result<(), String> {
     db(&state, move |s| repos::set_setting(s, &key, &value)).await
+}
+
+// ── M3: schedules, quotas, post-action control ──────────────────────────
+
+/// Sets (or clears) a queue's schedule and post-queue action. The schedule
+/// arrives as scheduler-crate JSON; it is validated before persisting.
+#[tauri::command]
+pub async fn set_queue_schedule(
+    state: tauri::State<'_, Arc<AppState>>,
+    queue_id: String,
+    schedule: Option<String>,
+    post_action: String,
+) -> Result<(), String> {
+    swiftfetch_scheduler::validate_schedule_json(schedule.as_deref())?;
+    db(&state, move |s| {
+        repos::set_queue_schedule(s, &queue_id, schedule.as_deref(), &post_action)
+    })
+    .await
+}
+
+/// Cancels a pending sleep/hibernate/shutdown countdown.
+#[tauri::command]
+pub async fn cancel_post_action(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.post_action_cancel.cancel();
+    Ok(())
+}
+
+/// Current quota configuration and usage for the UI status line.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QuotaStatus {
+    pub hourly_limit: Option<u64>,
+    pub daily_limit: Option<u64>,
+    pub hourly_used: u64,
+    pub daily_used: u64,
+    pub exhausted: bool,
+}
+
+/// Reports the quota gate state.
+#[tauri::command]
+pub async fn get_quota_status(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<QuotaStatus, String> {
+    let quota = state
+        .quota
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let now = chrono::Utc::now();
+    let (hourly_used, daily_used) = quota.ledger.usage(now);
+    let exhausted = matches!(
+        quota.ledger.verdict(&quota.config, now),
+        swiftfetch_scheduler::QuotaVerdict::Exhausted { .. }
+    );
+    Ok(QuotaStatus {
+        hourly_limit: quota.config.hourly_limit,
+        daily_limit: quota.config.daily_limit,
+        hourly_used,
+        daily_used,
+        exhausted,
+    })
 }

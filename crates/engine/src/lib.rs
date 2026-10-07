@@ -7,6 +7,7 @@
 //! `tokio::task::block_in_place` for positioned writes).
 #![forbid(unsafe_code)]
 
+pub mod av;
 pub mod checksum;
 pub mod connection;
 pub mod disk;
@@ -18,6 +19,7 @@ pub mod segment;
 pub mod segmenter;
 mod supervisor;
 
+pub use av::{AvScanner, AvScannerRef, ScanOutcome, WindowsDefender};
 pub use engine::{
     Engine, EngineConfig, JobEvent, JobSnapshot, JobSpec, JobState, SegmentSnapshot, UrlRefresher,
 };

@@ -11,7 +11,7 @@ crash-safe journaling, queues + scheduler, browser capture, video grabbing —
 and exceeds it with cross-platform support, BitTorrent, checksum verification
 and an open plugin surface.
 
-**Status:** Milestone 2 — desktop app shell complete. The build contract is
+**Status:** Milestone 3 — scheduler + automation complete. The build contract is
 the "SwiftFetch Build Prompt" document; the architecture contract is
 [docs/system-design.md](docs/system-design.md); product scope is
 [docs/PRD.md](docs/PRD.md).
@@ -67,7 +67,7 @@ cargo run -p swiftfetch-desktop   # launch the desktop app window
 | M0 | Project scaffolding | workspace, CI, docs skeleton, SQLite store, Tauri shell ✅ |
 | M1 | Download engine core | segmentation, resume, speed limiter, test server ✅ |
 | M2 | Desktop app shell | main window, dialogs, categories, queues UI, tray ✅ |
-| M3 | Scheduler + automation | scheduler, quotas, clipboard, drag-drop, AV hook, CLI |
+| M3 | Scheduler + automation | scheduler, quotas, clipboard, drag-drop, AV hook, CLI ✅ |
 | M4 | Browser + media | MV3/Firefox extensions, native host, HLS/DASH grabber, YouTube one-click (§12.4) |
 | M5 | Depth + packaging | site grabber, mirrors, i18n, updater, installers |
 | M6 | Differentiators | BitTorrent, checksums, plugin API, hardening |

@@ -2,7 +2,7 @@
 //! categories and settings. All functions take a [`Store`] and run
 //! synchronously — callers on async contexts wrap in `spawn_blocking`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use rusqlite::OptionalExtension;
 
@@ -64,6 +64,10 @@ pub struct QueueRow {
     pub max_concurrent: i64,
     /// Whether the queue is active (auto-starts items).
     pub is_active: i64,
+    /// `Schedule` JSON (scheduler crate), `None` = manual queue.
+    pub schedule_json: Option<String>,
+    /// Post-action when the queue drains: `none|sleep|hibernate|shutdown`.
+    pub post_action: String,
 }
 
 impl DownloadRow {
@@ -367,8 +371,10 @@ pub fn create_queue(
 /// Returns [`StoreError`] on SQL failure.
 pub fn list_queues(store: &Store) -> Result<Vec<QueueRow>, StoreError> {
     store.with_conn(|conn| {
-        let mut stmt =
-            conn.prepare("SELECT id, name, max_concurrent, is_active FROM queues ORDER BY name")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, max_concurrent, is_active, schedule_json, post_action \
+             FROM queues ORDER BY name",
+        )?;
         let rows = stmt
             .query_map([], |r| {
                 Ok(QueueRow {
@@ -376,10 +382,32 @@ pub fn list_queues(store: &Store) -> Result<Vec<QueueRow>, StoreError> {
                     name: r.get(1)?,
                     max_concurrent: r.get(2)?,
                     is_active: r.get(3)?,
+                    schedule_json: r.get(4)?,
+                    post_action: r.get(5)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    })
+}
+
+/// Sets a queue's schedule (`None` = manual) and post-queue action.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn set_queue_schedule(
+    store: &Store,
+    queue_id: &str,
+    schedule_json: Option<&str>,
+    post_action: &str,
+) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "UPDATE queues SET schedule_json = ?2, post_action = ?3 WHERE id = ?1",
+            rusqlite::params![queue_id, schedule_json, post_action],
+        )?;
+        Ok(())
     })
 }
 
@@ -560,4 +588,175 @@ pub fn default_download_dir() -> PathBuf {
         .or_else(dirs::home_dir)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("SwiftFetch")
+}
+
+// ── Out-of-process bridge (CLI ↔ app, Milestone 3) ───────────────────────
+
+/// A download staged by an out-of-process client (CLI, clipboard watcher).
+#[derive(Debug, Clone)]
+pub struct StagedDownload {
+    /// Stage request id.
+    pub id: String,
+    /// Source URL.
+    pub url: String,
+    /// Destination directory (`None` = default download dir).
+    pub dest_dir: Option<PathBuf>,
+    /// Requested filename (`None` = derive from probe).
+    pub filename: Option<String>,
+    /// Queue to enqueue into, if any.
+    pub queue_id: Option<String>,
+    /// Start paused instead of immediately.
+    pub start_paused: bool,
+    /// Who staged it (`cli|clipboard|api`).
+    pub source: String,
+}
+
+/// A control command from an out-of-process client targeting a live job.
+#[derive(Debug, Clone)]
+pub struct CliCommand {
+    /// Command id.
+    pub id: String,
+    /// Target job id.
+    pub job_id: String,
+    /// `pause|resume|cancel`.
+    pub action: String,
+}
+
+/// Stages a download request for the app to pick up. The write runs under
+/// `BEGIN IMMEDIATE` per the cross-process single-writer discipline.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn stage_download(
+    store: &Store,
+    url: &str,
+    dest_dir: Option<&Path>,
+    filename: Option<&str>,
+    queue_id: Option<&str>,
+    start_paused: bool,
+    source: &str,
+) -> Result<String, StoreError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let dest = dest_dir.map(|d| d.to_string_lossy().into_owned());
+    store.with_conn_immediate(|conn| {
+        conn.execute(
+            "INSERT INTO staged_downloads (id, url, dest_dir, filename, queue_id, \
+             start_paused, source, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+            rusqlite::params![
+                id,
+                url,
+                dest,
+                filename,
+                queue_id,
+                i64::from(start_paused),
+                source
+            ],
+        )?;
+        Ok(())
+    })?;
+    Ok(id)
+}
+
+/// Claims all pending staged downloads atomically (marks them consumed and
+/// returns them). Pending rows created by the same process kind are all
+/// claimed — the caller decides what to do with each.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn take_staged_downloads(store: &Store) -> Result<Vec<StagedDownload>, StoreError> {
+    store.with_conn_immediate(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT id, url, dest_dir, filename, queue_id, start_paused, source \
+             FROM staged_downloads WHERE consumed_at IS NULL ORDER BY created_at",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, Option<String>>(3)?,
+                    r.get::<_, Option<String>>(4)?,
+                    r.get::<_, i64>(5)?,
+                    r.get::<_, String>(6)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        for (id, ..) in &rows {
+            conn.execute(
+                "UPDATE staged_downloads SET consumed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') \
+                 WHERE id = ?1",
+                rusqlite::params![id],
+            )?;
+        }
+        Ok(rows
+            .into_iter()
+            .map(
+                |(id, url, dest_dir, filename, queue_id, start_paused, source)| StagedDownload {
+                    id,
+                    url,
+                    dest_dir: dest_dir.map(PathBuf::from),
+                    filename,
+                    queue_id,
+                    start_paused: start_paused != 0,
+                    source,
+                },
+            )
+            .collect())
+    })
+}
+
+/// Enqueues a control command (pause/resume/cancel) for the app.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn enqueue_command(store: &Store, job_id: &str, action: &str) -> Result<String, StoreError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    store.with_conn_immediate(|conn| {
+        conn.execute(
+            "INSERT INTO cli_commands (id, job_id, action, created_at) \
+             VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+            rusqlite::params![id, job_id, action],
+        )?;
+        Ok(())
+    })?;
+    Ok(id)
+}
+
+/// Claims all pending control commands atomically.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn take_pending_commands(store: &Store) -> Result<Vec<CliCommand>, StoreError> {
+    store.with_conn_immediate(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT id, job_id, action FROM cli_commands \
+             WHERE consumed_at IS NULL ORDER BY created_at",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        for (id, ..) in &rows {
+            conn.execute(
+                "UPDATE cli_commands SET consumed_at = \
+                 strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?1",
+                rusqlite::params![id],
+            )?;
+        }
+        Ok(rows
+            .into_iter()
+            .map(|(id, job_id, action)| CliCommand { id, job_id, action })
+            .collect())
+    })
 }

@@ -44,7 +44,8 @@
     "interrupted": "Interrupted",
     "cancelled": "Cancelled",
     "globalSpeed": "Total speed",
-    "activeCount": "{count} active"
+    "activeCount": "{count} active",
+    "quota": "Quota"
   },
   "addUrl": {
     "title": "Add download",
@@ -77,7 +78,11 @@
     "themeDark": "Dark",
     "language": "Language",
     "globalLimit": "Global speed limit (KiB/s, empty = unlimited)",
-    "save": "Save"
+    "save": "Save",
+    "quota": "Data quota (MiB, empty = unlimited)",
+    "quotaHourly": "Hourly limit",
+    "quotaDaily": "Daily limit",
+    "clipboard": "Watch clipboard for URLs"
   },
   "delete": {
     "confirm": "Delete this download?",
@@ -88,5 +93,33 @@
     "rangeMismatch": "Server range mismatch",
     "noResume": "Resume not supported by server",
     "generic": "Download failed"
+  },
+  "toast": {
+    "clipboard": "URL copied — add it as a download?",
+    "queueOpened": "Queue opened by schedule",
+    "queueClosed": "Queue closed by schedule",
+    "quotaExhausted": "Quota reached — downloads paused until the window resets",
+    "quotaResumed": "Quota window reset — downloads resumed",
+    "postAction": "Queue drained: {action} in 60 s",
+    "cancelPost": "Cancel"
+  },
+  "queue": {
+    "schedule": {
+      "title": "Schedule",
+      "kind": "Schedule",
+      "manual": "Manual (no schedule)",
+      "startStop": "Daily window",
+      "daily": "Daily at",
+      "periodic": "Every",
+      "once": "Once at",
+      "from": "From",
+      "to": "Until",
+      "at": "At"
+    },
+    "postAction": "After queue drains",
+    "postNone": "Do nothing",
+    "postSleep": "Sleep",
+    "postHibernate": "Hibernate",
+    "postShutdown": "Shut down"
   }
 }

@@ -1136,6 +1136,50 @@ fn spawn_segment_idx(
         .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(task);
 }
 
+/// AV hook (M3): scan the completed content before it lands at the
+/// destination. Flagged files are deleted and the job fails; a scanner that
+/// cannot run never blocks the download.
+async fn av_scan(inner: &Arc<EngineInner>, shared: &Arc<JobShared>) -> Result<(), EngineError> {
+    let Some(scanner) = &inner.av else {
+        return Ok(());
+    };
+    let path = shared.part_path.clone();
+    let scanner = std::sync::Arc::clone(scanner);
+    let scan = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        tokio::task::spawn_blocking(move || scanner.scan(&path)),
+    )
+    .await;
+    let outcome = match scan {
+        Ok(Ok(outcome)) => outcome,
+        Ok(Err(err)) => crate::av::ScanOutcome::Skipped {
+            reason: format!("scan task failed: {err}"),
+        },
+        Err(_) => crate::av::ScanOutcome::Skipped {
+            reason: "scan timed out after 120 s".into(),
+        },
+    };
+    match outcome {
+        crate::av::ScanOutcome::Clean | crate::av::ScanOutcome::Skipped { .. } => Ok(()),
+        crate::av::ScanOutcome::Flagged { detection } => {
+            let scanner_name = inner.av.as_ref().map_or("av", |s| s.name()).to_owned();
+            tracing::warn!(
+                detection,
+                scanner = scanner_name,
+                "download flagged — deleting part file"
+            );
+            if let Err(err) = crate::disk::remove_partial(&shared.part_path) {
+                tracing::warn!(error = %err, "failed to remove flagged part file");
+            }
+            Err(EngineError::MalwareDetected {
+                path: shared.part_path.clone(),
+                scanner: scanner_name,
+                detection,
+            })
+        }
+    }
+}
+
 async fn finalize_done(inner: &Arc<EngineInner>, shared: &Arc<JobShared>) {
     shared.set_state(JobState::Verifying, None);
     let writer_taken = shared
@@ -1198,6 +1242,12 @@ async fn finalize_done(inner: &Arc<EngineInner>, shared: &Arc<JobShared>) {
             .await;
             return;
         }
+    }
+
+    // AV hook (M3): scan before the rename — see `av_scan`.
+    if let Err(err) = av_scan(inner, shared).await {
+        fail_job(inner, shared, err).await;
+        return;
     }
 
     if let Err(err) = std::fs::rename(&shared.part_path, &shared.final_path) {

@@ -49,6 +49,17 @@ pub enum EngineError {
         /// Actual size in bytes.
         actual: u64,
     },
+    /// The antivirus scanner flagged the completed file; the file was
+    /// deleted and never reached the destination.
+    #[error("malware detected by {scanner} for {}: {detection}", path.display())]
+    MalwareDetected {
+        /// File that was flagged.
+        path: PathBuf,
+        /// Name of the scanner that flagged it.
+        scanner: String,
+        /// Detection name reported by the scanner.
+        detection: String,
+    },
     /// The destination file already exists and overwrite was not requested.
     #[error("destination already exists: {}", .0.display())]
     DestExists(PathBuf),
@@ -87,6 +98,7 @@ impl EngineError {
             Self::NoResume => "E_NO_RESUME",
             Self::ChecksumMismatch { .. } => "E_CHECKSUM_MISMATCH",
             Self::SizeMismatch { .. } => "E_SIZE_MISMATCH",
+            Self::MalwareDetected { .. } => "E_MALWARE_DETECTED",
             Self::DestExists(_) => "E_DEST_EXISTS",
             Self::UrlRefreshExhausted { .. } => "E_URL_REFRESH_EXHAUSTED",
             Self::Config(_) => "E_CONFIG",

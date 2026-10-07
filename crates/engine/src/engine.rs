@@ -402,6 +402,7 @@ pub(crate) struct EngineInner {
     pub journal: Journal,
     pub limiter: SpeedLimiter,
     pub jobs: Mutex<HashMap<String, std::sync::Arc<JobShared>>>,
+    pub av: Option<crate::av::AvScannerRef>,
 }
 
 /// The download engine. Clone-cheap; all methods are runtime-safe.
@@ -419,6 +420,29 @@ impl Engine {
     ///
     /// Returns [`EngineError`] for client-configuration or journal failures.
     pub fn open(config: EngineConfig, store: Store) -> Result<Self, EngineError> {
+        Self::open_inner(config, store, None)
+    }
+
+    /// [`Engine::open`] with an antivirus scanner installed: every completed
+    /// download is scanned before the rename into its final destination
+    /// (M3 AV hook).
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Engine::open`].
+    pub fn open_with_av_scanner(
+        config: EngineConfig,
+        store: Store,
+        scanner: crate::av::AvScannerRef,
+    ) -> Result<Self, EngineError> {
+        Self::open_inner(config, store, Some(scanner))
+    }
+
+    fn open_inner(
+        config: EngineConfig,
+        store: Store,
+        av: Option<crate::av::AvScannerRef>,
+    ) -> Result<Self, EngineError> {
         let client = config
             .net
             .client()
@@ -436,6 +460,7 @@ impl Engine {
                 journal,
                 limiter,
                 jobs: Mutex::new(HashMap::new()),
+                av,
             }),
         })
     }
