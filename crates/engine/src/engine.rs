@@ -115,6 +115,9 @@ pub struct JobSpec {
     pub user_agent: Option<String>,
     /// URL refresher used on expired/forbidden links.
     pub url_refresher: Option<std::sync::Arc<dyn UrlRefresher>>,
+    /// Probe and persist the job row but do not spawn the supervisor —
+    /// the job waits in `paused` for an explicit resume (queue-later).
+    pub start_paused: bool,
 }
 
 impl JobSpec {
@@ -131,13 +134,15 @@ impl JobSpec {
             cookies: None,
             user_agent: None,
             url_refresher: None,
+            start_paused: false,
         }
     }
 }
 
 /// Lifecycle states persisted in `downloads.state`; string forms match the
 /// schema comment and `swiftfetch_common::DOWNLOAD_STATES`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum JobState {
     /// Waiting to start.
     Queued,
@@ -194,7 +199,8 @@ impl JobState {
 }
 
 /// Streamed job updates.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub enum JobEvent {
     /// Progress tick (≤ 4 Hz per job).
     Progress {
@@ -474,6 +480,20 @@ impl Engine {
             }
         };
 
+        // Paths already claimed by active rows (paused jobs have no file
+        // on disk yet, so a filesystem check alone would let two queued
+        // copies of the same URL collide).
+        let claimed: std::collections::HashSet<String> = {
+            let journal = self.inner.journal.clone();
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(journal.claimed_final_paths());
+            });
+            rx.await
+                .map_err(|err| EngineError::Config(format!("claim query: {err}")))?
+                .map_err(EngineError::from)?
+        };
+
         let filename = match spec.filename.clone() {
             Some(name) => crate::connection::sanitize_filename(&name),
             None => probe
@@ -484,7 +504,7 @@ impl Engine {
         if filename.is_empty() {
             return Err(EngineError::Config("resolved filename is empty".into()));
         }
-        let final_path = resolve_destination(&spec.dest_dir, &filename).await?;
+        let final_path = resolve_destination(&spec.dest_dir, &filename, &claimed).await?;
         let mut part_os = final_path.clone().into_os_string();
         part_os.push(".sfpart");
         let part_path = PathBuf::from(part_os);
@@ -507,7 +527,12 @@ impl Engine {
             user_agent: spec.user_agent.clone(),
             cookies: spec.cookies.clone(),
         };
-        self.inner.journal.create_job(&row, "downloading")?;
+        let initial_state = if spec.start_paused {
+            "paused"
+        } else {
+            "downloading"
+        };
+        self.inner.journal.create_job(&row, initial_state)?;
 
         let (events, _) = broadcast::channel(256);
         let job_bucket = self
@@ -548,11 +573,13 @@ impl Engine {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(id.clone(), shared.clone());
         let events = shared.events.subscribe();
-        tokio::spawn(crate::supervisor::run(
-            self.inner.clone(),
-            shared,
-            StartMode::Fresh,
-        ));
+        if !spec_ref_start_paused(&shared.spec) {
+            tokio::spawn(crate::supervisor::run(
+                self.inner.clone(),
+                shared,
+                StartMode::Fresh,
+            ));
+        }
         Ok((id, events))
     }
 
@@ -600,6 +627,7 @@ impl Engine {
             cookies: row.cookies.clone(),
             user_agent: row.user_agent.clone(),
             url_refresher: None,
+            start_paused: false,
         };
         let (events, _) = broadcast::channel(256);
         let shared = std::sync::Arc::new(JobShared {
@@ -768,14 +796,20 @@ impl Engine {
 }
 
 /// Resolves `dest_dir/filename` without overwriting: appends ` (2)`, ` (3)`…
-/// before the extension when the path exists.
-async fn resolve_destination(dest_dir: &Path, filename: &str) -> Result<PathBuf, EngineError> {
+/// before the extension when the path exists on disk OR is claimed by an
+/// active download row.
+async fn resolve_destination(
+    dest_dir: &Path,
+    filename: &str,
+    claimed: &std::collections::HashSet<String>,
+) -> Result<PathBuf, EngineError> {
     let dir = dest_dir.to_path_buf();
     let name = filename.to_owned();
+    let claimed = claimed.clone();
     tokio::task::spawn_blocking(move || -> Result<PathBuf, EngineError> {
         std::fs::create_dir_all(&dir)?;
         let candidate = dir.join(&name);
-        if !candidate.exists() {
+        if !candidate.exists() && !claimed.contains(&candidate.display().to_string()) {
             return Ok(candidate);
         }
         let stem = Path::new(&name)
@@ -786,7 +820,7 @@ async fn resolve_destination(dest_dir: &Path, filename: &str) -> Result<PathBuf,
             .map(|s| format!(".{}", s.to_string_lossy()));
         for n in 2..10_000u32 {
             let candidate = dir.join(format!("{stem} ({n}){}", ext.clone().unwrap_or_default()));
-            if !candidate.exists() {
+            if !candidate.exists() && !claimed.contains(&candidate.display().to_string()) {
                 return Ok(candidate);
             }
         }
@@ -803,4 +837,8 @@ async fn resolve_destination(dest_dir: &Path, filename: &str) -> Result<PathBuf,
 /// Returns the replacement URL configured on the spec, if any.
 fn refreshed_url(spec: &JobSpec) -> Option<String> {
     spec.url_refresher.as_ref().and_then(|r| r.refresh())
+}
+
+fn spec_ref_start_paused(spec: &JobSpec) -> bool {
+    spec.start_paused
 }

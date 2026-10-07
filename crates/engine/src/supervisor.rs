@@ -145,6 +145,15 @@ pub(crate) async fn run(inner: Arc<EngineInner>, shared: Arc<JobShared>, mode: S
 #[allow(clippy::too_many_lines)] // the job state machine reads best in one body
 async fn run_inner(inner: Arc<EngineInner>, shared: Arc<JobShared>, mode: StartMode) {
     shared.set_state(JobState::Downloading, None);
+    // Persist the transition: queue runners and the UI count in-flight
+    // downloads by the journaled state, so resume must land in the DB too.
+    {
+        let id = shared.id.clone();
+        let _ = journal_do(&inner.journal, move |j| {
+            j.set_state(&id, "downloading", None)
+        })
+        .await;
+    }
     let mut restarts = 0u32;
     let mut fresh_disk = matches!(mode, StartMode::Fresh);
     let mut need_plan = matches!(mode, StartMode::Fresh);
@@ -193,6 +202,15 @@ async fn run_inner(inner: Arc<EngineInner>, shared: Arc<JobShared>, mode: StartM
                 Ok(EntityDecision::Keep) => {
                     let id = shared.id.clone();
                     match journal_do(&inner.journal, move |j| j.load_segments(&id)).await {
+                        Ok(rows) if rows.is_empty() => {
+                            // A job paused before its first start has no
+                            // journaled plan yet; an empty plan would settle
+                            // immediately and finalize an empty part file.
+                            if let Err(err) = plan_fresh(&inner, &shared).await {
+                                fail_job(&inner, &shared, err).await;
+                                return;
+                            }
+                        }
                         Ok(rows) => {
                             let done = rows.iter().map(|s| s.done).sum::<u64>();
                             *shared
@@ -779,14 +797,17 @@ fn all_segments_settled(shared: &Arc<JobShared>) -> bool {
         .segments
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    segments.iter().all(|s| {
-        matches!(
-            *s.state
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner),
-            SegState::Done | SegState::Stalled
-        )
-    })
+    // A job with no plan is never "settled" — that would finalize an empty
+    // part file instead of downloading.
+    !segments.is_empty()
+        && segments.iter().all(|s| {
+            matches!(
+                *s.state
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+                SegState::Done | SegState::Stalled
+            )
+        })
 }
 
 /// A connection freed up: start queued work, or split the largest remaining

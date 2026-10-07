@@ -421,6 +421,43 @@ impl Journal {
         })
     }
 
+    /// Whether an active (non-terminal) download already claims
+    /// `final_path`. Used to dedup destinations for jobs that have not
+    /// created their partial file yet (paused/queued).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError`] on SQL failure.
+    pub fn final_path_claimed(&self, final_path: &str) -> Result<bool, StoreError> {
+        let store = self.locked();
+        store.with_conn(|conn| {
+            let claimed: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM downloads WHERE final_path = ?1                  AND state NOT IN ('done', 'error', 'cancelled')",
+                [final_path],
+                |row| row.get(0),
+            )?;
+            Ok(claimed > 0)
+        })
+    }
+
+    /// Final paths claimed by active (non-terminal) downloads.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StoreError`] on SQL failure.
+    pub fn claimed_final_paths(&self) -> Result<std::collections::HashSet<String>, StoreError> {
+        let store = self.locked();
+        store.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+                "SELECT final_path FROM downloads                  WHERE state NOT IN ('done', 'error', 'cancelled')",
+            )?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<std::collections::HashSet<_>, _>>()?;
+            Ok(rows)
+        })
+    }
+
     /// Loads all segment rows for a job, ordered by index.
     ///
     /// # Errors
