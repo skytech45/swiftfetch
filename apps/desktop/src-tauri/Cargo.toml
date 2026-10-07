@@ -10,11 +10,21 @@ authors.workspace = true
 tauri-build = { workspace = true }
 
 [dependencies]
+dirs = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+swiftfetch-engine = { workspace = true }
 swiftfetch-store = { workspace = true }
-tauri = { workspace = true }
+tauri = { workspace = true, features = ["tray-icon"] }
+tauri-plugin-notification = "2"
+tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+
+[dev-dependencies]
+swiftfetch-test-server = { workspace = true }
+tempfile = { workspace = true }

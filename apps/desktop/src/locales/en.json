@@ -1,0 +1,92 @@
+{
+  "app": {
+    "title": "SwiftFetch",
+    "subtitle": "High-speed download manager"
+  },
+  "toolbar": {
+    "addUrl": "Add URL",
+    "resume": "Resume",
+    "pause": "Pause",
+    "delete": "Delete",
+    "settings": "Settings",
+    "pauseAll": "Pause all",
+    "resumeAll": "Resume all"
+  },
+  "sidebar": {
+    "categories": "Categories",
+    "queues": "Queues",
+    "all": "All",
+    "newQueue": "New queue",
+    "startQueue": "Start",
+    "stopQueue": "Stop",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "deleteQueue": "Delete queue"
+  },
+  "table": {
+    "name": "Name",
+    "size": "Size",
+    "status": "Status",
+    "progress": "Progress",
+    "speed": "Speed",
+    "eta": "ETA",
+    "added": "Added",
+    "empty": "No downloads yet — add a URL to get started."
+  },
+  "status": {
+    "queued": "Queued",
+    "probing": "Probing",
+    "downloading": "Downloading",
+    "paused": "Paused",
+    "verifying": "Verifying",
+    "done": "Completed",
+    "error": "Failed",
+    "interrupted": "Interrupted",
+    "cancelled": "Cancelled",
+    "globalSpeed": "Total speed",
+    "activeCount": "{count} active"
+  },
+  "addUrl": {
+    "title": "Add download",
+    "url": "URL",
+    "urlPlaceholder": "https://example.com/file.zip",
+    "category": "Category",
+    "queue": "Queue",
+    "none": "None",
+    "connections": "Connections",
+    "start": {
+      "now": "Start now",
+      "queue": "Add to queue",
+      "later": "Download later"
+    },
+    "add": "Add",
+    "cancel": "Cancel",
+    "invalidUrl": "Please enter a valid http(s) URL."
+  },
+  "progress": {
+    "title": "Download details",
+    "segments": "Segments",
+    "segment": "Segment {idx}",
+    "close": "Close"
+  },
+  "settings": {
+    "title": "Settings",
+    "theme": "Theme",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "language": "Language",
+    "globalLimit": "Global speed limit (KiB/s, empty = unlimited)",
+    "save": "Save"
+  },
+  "delete": {
+    "confirm": "Delete this download?",
+    "withFile": "Also delete the file",
+    "confirmDelete": "Delete"
+  },
+  "errors": {
+    "rangeMismatch": "Server range mismatch",
+    "noResume": "Resume not supported by server",
+    "generic": "Download failed"
+  }
+}

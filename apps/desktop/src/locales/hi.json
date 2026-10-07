@@ -1,0 +1,92 @@
+{
+  "app": {
+    "title": "SwiftFetch",
+    "subtitle": "हाई-स्पीड डाउनलोड मैनेजर"
+  },
+  "toolbar": {
+    "addUrl": "URL जोड़ें",
+    "resume": "फिर शुरू करें",
+    "pause": "रोकें",
+    "delete": "हटाएं",
+    "settings": "सेटिंग्स",
+    "pauseAll": "सभी रोकें",
+    "resumeAll": "सभी फिर शुरू करें"
+  },
+  "sidebar": {
+    "categories": "श्रेणियाँ",
+    "queues": "कतारें",
+    "all": "सभी",
+    "newQueue": "नई कतार",
+    "startQueue": "शुरू करें",
+    "stopQueue": "रोकें",
+    "moveUp": "ऊपर ले जाएं",
+    "moveDown": "नीचे ले जाएं",
+    "deleteQueue": "कतार हटाएं"
+  },
+  "table": {
+    "name": "नाम",
+    "size": "आकार",
+    "status": "स्थिति",
+    "progress": "प्रगति",
+    "speed": "गति",
+    "eta": "शेष समय",
+    "added": "जोड़ा गया",
+    "empty": "अभी कोई डाउनलोड नहीं — शुरू करने के लिए एक URL जोड़ें।"
+  },
+  "status": {
+    "queued": "कतार में",
+    "probing": "जांच हो रही है",
+    "downloading": "डाउनलोड हो रहा है",
+    "paused": "रुका हुआ",
+    "verifying": "सत्यापित हो रहा है",
+    "done": "पूरा हुआ",
+    "error": "विफल",
+    "interrupted": "बाधित",
+    "cancelled": "रद्द",
+    "globalSpeed": "कुल गति",
+    "activeCount": "{count} सक्रिय"
+  },
+  "addUrl": {
+    "title": "डाउनलोड जोड़ें",
+    "url": "URL",
+    "urlPlaceholder": "https://example.com/file.zip",
+    "category": "श्रेणी",
+    "queue": "कतार",
+    "none": "कोई नहीं",
+    "connections": "कनेक्शन",
+    "start": {
+      "now": "अभी शुरू करें",
+      "queue": "कतार में जोड़ें",
+      "later": "बाद में डाउनलोड करें"
+    },
+    "add": "जोड़ें",
+    "cancel": "रद्द करें",
+    "invalidUrl": "कृपया मान्य http(s) URL दर्ज करें।"
+  },
+  "progress": {
+    "title": "डाउनलोड विवरण",
+    "segments": "सेगमेंट",
+    "segment": "सेगमेंट {idx}",
+    "close": "बंद करें"
+  },
+  "settings": {
+    "title": "सेटिंग्स",
+    "theme": "थीम",
+    "themeSystem": "सिस्टम",
+    "themeLight": "लाइट",
+    "themeDark": "डार्क",
+    "language": "भाषा",
+    "globalLimit": "वैश्विक गति सीमा (KiB/s, खाली = असीमित)",
+    "save": "सहेजें"
+  },
+  "delete": {
+    "confirm": "यह डाउनलोड हटाएं?",
+    "withFile": "फ़ाइल भी हटाएं",
+    "confirmDelete": "हटाएं"
+  },
+  "errors": {
+    "rangeMismatch": "सर्वर रेंज बेमेल",
+    "noResume": "सर्वर द्वारा फिर-शुरू समर्थित नहीं",
+    "generic": "डाउनलोड विफल"
+  }
+}

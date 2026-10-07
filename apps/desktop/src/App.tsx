@@ -1,109 +1,336 @@
-import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { PingPanel } from "./components/PingPanel";
-
-interface DbStatus {
-  path: string;
-  journal_mode: string | null;
-  tables: number | null;
-  error: string | null;
-}
-
-interface PingState {
-  reply: string;
-  autoCount: number;
-  manualCount: number;
-}
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { invoke } from "./jobs";
+import {
+  formatBytes,
+  formatEta,
+  formatSpeed,
+  installEventBridge,
+  useJobs,
+  type CategoryView,
+  type JobView,
+  type QueueView,
+} from "./jobs";
+import { saveTheme, useI18n, useTheme, type Theme } from "./i18n";
+import { AddUrlDialog } from "./components/AddUrlDialog";
+import { ProgressDialog } from "./components/ProgressDialog";
+import { QueuePanel } from "./components/QueuePanel";
+import { SettingsDialog } from "./components/SettingsDialog";
 
 export default function App() {
-  const [pingState, setPingState] = useState<PingState>({
-    reply: "",
-    autoCount: 0,
-    manualCount: 0,
-  });
-  const [db, setDb] = useState<DbStatus | null>(null);
+  const { t, lang, setLang } = useI18n();
+  const theme = useTheme();
+  const jobs = useJobs();
+  const [categories, setCategories] = useState<CategoryView[]>([]);
+  const [queues, setQueues] = useState<QueueView[]>([]);
+  const [filter, setFilter] = useState<string>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [addOpen, setAddOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [sortDesc, setSortDesc] = useState(false);
+
+  const refreshMeta = useCallback(() => {
+    invoke<CategoryView[]>("list_categories").then(setCategories).catch(() => {});
+    invoke<QueueView[]>("list_queues").then(setQueues).catch(() => {});
+  }, []);
 
   useEffect(() => {
-    invoke<DbStatus>("db_status")
-      .then(setDb)
-      .catch((err: unknown) =>
-        setDb({ path: "", journal_mode: null, tables: null, error: String(err) }),
+    const un = installEventBridge();
+    refreshMeta();
+    const onTheme = (e: MediaQueryListEvent): void => {
+      if (document.documentElement.dataset.theme === undefined) return;
+      void e;
+    };
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", onTheme);
+    return () => {
+      void un.then((f) => f());
+      window.matchMedia("(prefers-color-scheme: dark)").removeEventListener("change", onTheme);
+    };
+  }, [refreshMeta]);
+
+  const visible = useMemo(() => {
+    const filtered =
+      filter === "all" ? jobs : jobs.filter((j) => j.categoryId === filter);
+    return [...filtered].sort((a, b) =>
+      sortDesc
+        ? b.createdAt.localeCompare(a.createdAt)
+        : a.createdAt.localeCompare(b.createdAt),
+    );
+  }, [jobs, filter, sortDesc]);
+
+  const activeCount = jobs.filter((j) =>
+    ["downloading", "probing", "verifying"].includes(j.state),
+  ).length;
+  const totalSpeed = jobs.reduce((acc, j) => acc + Math.max(0, j.speedBps), 0);
+
+  const selectedIds = useMemo(
+    () => visible.filter((j) => selected.has(j.id)).map((j) => j.id),
+    [visible, selected],
+  );
+
+  const act = useCallback(
+    async (action: "resume" | "pause", id: string) => {
+      await invoke(
+        action === "resume" ? "resume_job" : "pause_job",
+        { id },
       );
-  }, []);
+    },
+    [],
+  );
 
-  const ping = useCallback((via: "auto" | "button") => {
-    void invoke<string>("ping")
-      .then((reply) => {
-        setPingState((prev) => ({
-          reply,
-          autoCount: prev.autoCount + (via === "auto" ? 1 : 0),
-          manualCount: prev.manualCount + (via === "button" ? 1 : 0),
-        }));
-      })
-      .catch((err: unknown) => {
-        setPingState((prev) => ({ ...prev, reply: `error: ${String(err)}` }));
-      });
-  }, []);
+  const deleteSelected = useCallback(async () => {
+    const withFile = window.confirm(t("delete.confirm"));
+    if (!withFile) return;
+    for (const id of selectedIds) {
+      await invoke("delete_job", { id, deleteFile: true });
+    }
+    setSelected(new Set());
+  }, [selectedIds, t]);
 
-  // One round-trip on mount so the scaffold self-demonstrates the IPC path.
-  useEffect(() => {
-    const timer = window.setTimeout(() => ping("auto"), 600);
-    return () => window.clearTimeout(timer);
-  }, [ping]);
+  const pauseAll = useCallback(async () => {
+    for (const j of jobs) {
+      if (j.state === "downloading") await invoke("pause_job", { id: j.id });
+    }
+  }, [jobs]);
+
+  const resumeAll = useCallback(async () => {
+    for (const j of jobs) {
+      if (j.state === "paused" || j.state === "interrupted") {
+        await invoke("resume_job", { id: j.id });
+      }
+    }
+  }, [jobs]);
+
+  const changeTheme = useCallback(
+    (next: Theme) => {
+      void saveTheme(next);
+      // Reload-less theme switch: re-apply via the hook by forcing state.
+      window.location.hash = `#theme-${next}`;
+      document.documentElement.dataset.theme =
+        next === "dark"
+          ? "dark"
+          : next === "light"
+            ? "light"
+            : window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+    },
+    [],
+  );
+
+  const detailJob = detailId === null ? null : (jobs.find((j) => j.id === detailId) ?? null);
 
   return (
     <main className="shell">
       <header className="header">
         <span className="logo" aria-hidden="true" />
         <div>
-          <h1>SwiftFetch</h1>
-          <p className="muted">High-speed download manager · Milestone 0 scaffold</p>
+          <h1>{t("app.title")}</h1>
+          <p className="muted">{t("app.subtitle")}</p>
+        </div>
+        <div className="header-actions">
+          <select
+            aria-label={t("settings.language")}
+            value={lang}
+            onChange={(e) => setLang(e.target.value as "en" | "hi")}
+          >
+            <option value="en">English</option>
+            <option value="hi">हिन्दी</option>
+          </select>
+          <select
+            aria-label={t("settings.theme")}
+            value={theme}
+            onChange={(e) => changeTheme(e.target.value as Theme)}
+          >
+            <option value="system">{t("settings.themeSystem")}</option>
+            <option value="light">{t("settings.themeLight")}</option>
+            <option value="dark">{t("settings.themeDark")}</option>
+          </select>
         </div>
       </header>
 
-      <div className="cards">
-        <PingPanel
-          reply={pingState.reply}
-          autoCount={pingState.autoCount}
-          manualCount={pingState.manualCount}
-          onPing={() => ping("button")}
-        />
+      <div className="toolbar" role="toolbar" aria-label={t("toolbar.addUrl")}>
+        <button type="button" className="primary" onClick={() => setAddOpen(true)}>
+          {t("toolbar.addUrl")}
+        </button>
+        <button
+          type="button"
+          disabled={selectedIds.length !== 1}
+          onClick={() => selectedIds[0] !== undefined && void act("resume", selectedIds[0])}
+        >
+          {t("toolbar.resume")}
+        </button>
+        <button
+          type="button"
+          disabled={selectedIds.length !== 1}
+          onClick={() => selectedIds[0] !== undefined && void act("pause", selectedIds[0])}
+        >
+          {t("toolbar.pause")}
+        </button>
+        <button
+          type="button"
+          disabled={selectedIds.length === 0}
+          onClick={() => void deleteSelected()}
+        >
+          {t("toolbar.delete")}
+        </button>
+        <button type="button" onClick={() => void resumeAll()}>
+          {t("toolbar.resumeAll")}
+        </button>
+        <button type="button" onClick={() => void pauseAll()}>
+          {t("toolbar.pauseAll")}
+        </button>
+        <span className="spacer" />
+        <button type="button" onClick={() => setSettingsOpen(true)}>
+          {t("toolbar.settings")}
+        </button>
+      </div>
 
-        <section className="card">
-          <h2>SQLite store</h2>
-          <p className="muted">
-            WAL-mode database created at the OS app-data directory on first run.
-          </p>
-          {db === null && <p className="muted">checking…</p>}
-          {db !== null && db.error === null && (
-            <ul className="kv">
-              <li>
-                <span className="muted">path</span>
-                <code>{db.path}</code>
-              </li>
-              <li>
-                <span className="muted">journal</span>
-                <span className={db.journal_mode === "wal" ? "badge ok" : "badge warn"}>
-                  {db.journal_mode ?? "unknown"}
-                  {db.journal_mode === "wal" ? " ✓" : ""}
-                </span>
-              </li>
-              <li>
-                <span className="muted">tables</span>
-                <span>{db.tables ?? "?"}</span>
-              </li>
-            </ul>
-          )}
-          {db !== null && db.error !== null && (
-            <p className="badge warn">store error: {db.error}</p>
+      <div className="content">
+        <aside className="sidebar">
+          <h3>{t("sidebar.categories")}</h3>
+          <button
+            type="button"
+            className={filter === "all" ? "side-item active" : "side-item"}
+            onClick={() => setFilter("all")}
+          >
+            {t("sidebar.all")}
+          </button>
+          {categories.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              className={filter === c.id ? "side-item active" : "side-item"}
+              onClick={() => setFilter(c.id)}
+            >
+              {c.name}
+            </button>
+          ))}
+          <QueuePanel queues={queues} onChanged={refreshMeta} />
+        </aside>
+
+        <section className="table-wrap">
+          {visible.length === 0 ? (
+            <p className="muted empty">{t("table.empty")}</p>
+          ) : (
+            <table className="downloads" data-testid="download-table">
+              <thead>
+                <tr>
+                  <th />
+                  <th>{t("table.name")}</th>
+                  <th>{t("table.progress")}</th>
+                  <th>{t("table.size")}</th>
+                  <th>{t("table.status")}</th>
+                  <th>{t("table.speed")}</th>
+                  <th>{t("table.eta")}</th>
+                  <th>
+                    <button
+                      type="button"
+                      className="sort"
+                      onClick={() => setSortDesc((v) => !v)}
+                    >
+                      {t("table.added")}
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((job) => (
+                  <JobRow
+                    key={job.id}
+                    job={job}
+                    selected={selected.has(job.id)}
+                    onSelect={() =>
+                      setSelected((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(job.id)) next.delete(job.id);
+                        else next.add(job.id);
+                        return next;
+                      })
+                    }
+                    onOpen={() => setDetailId(job.id)}
+                  />
+                ))}
+              </tbody>
+            </table>
           )}
         </section>
       </div>
 
-      <footer className="muted small">
-        Scaffold milestone — the download engine lands in Milestone 1, browser capture in
-        Milestone 4.
+      <footer className="statusbar">
+        <span>
+          {t("status.activeCount", { count: activeCount })} ·{" "}
+          {t("status.globalSpeed")}: {formatSpeed(totalSpeed)}
+        </span>
       </footer>
+
+      {addOpen && (
+        <AddUrlDialog
+          categories={categories}
+          queues={queues}
+          onClose={() => setAddOpen(false)}
+          onAdded={() => {
+            setAddOpen(false);
+            refreshMeta();
+          }}
+        />
+      )}
+      {settingsOpen && (
+        <SettingsDialog onClose={() => setSettingsOpen(false)} />
+      )}
+      {detailJob && (
+        <ProgressDialog job={detailJob} onClose={() => setDetailId(null)} />
+      )}
     </main>
+  );
+}
+
+function JobRow({
+  job,
+  selected,
+  onSelect,
+  onOpen,
+}: {
+  job: JobView;
+  selected: boolean;
+  onSelect: () => void;
+  onOpen: () => void;
+}) {
+  const { t } = useI18n();
+  const pct =
+    job.totalLen !== null && job.totalLen > 0
+      ? Math.min(100, (job.doneBytes / job.totalLen) * 100)
+      : job.state === "done"
+        ? 100
+        : 0;
+  const active = ["downloading", "probing", "verifying"].includes(job.state);
+  return (
+    <tr
+      className={selected ? "row selected" : "row"}
+      onDoubleClick={onOpen}
+      data-state={job.state}
+    >
+      <td>
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onSelect}
+          aria-label={job.filename}
+        />
+      </td>
+      <td className="name" title={job.url}>
+        {job.filename}
+      </td>
+      <td className="progress-cell">
+        <div className="bar">
+          <div className="fill" style={{ width: `${pct}%` }} data-active={active} />
+        </div>
+      </td>
+      <td>{formatBytes(job.totalLen)}</td>
+      <td>{t(`status.${job.state}`)}</td>
+      <td>{formatSpeed(job.speedBps)}</td>
+      <td>{formatEta(job.doneBytes, job.totalLen, job.speedBps)}</td>
+      <td>{job.createdAt.slice(0, 16).replace("T", " ")}</td>
+    </tr>
   );
 }
