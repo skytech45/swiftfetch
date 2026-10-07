@@ -557,6 +557,7 @@ impl Engine {
         } else {
             "downloading"
         };
+        let start_paused = spec.start_paused;
         self.inner.journal.create_job(&row, initial_state)?;
 
         let (events, _) = broadcast::channel(256);
@@ -578,7 +579,14 @@ impl Engine {
                 last_modified: probe.last_modified,
                 expected_digest: probe.advertised_digest,
             }),
-            state: Mutex::new(JobState::Downloading),
+            // Mirrors the journaled row state: a start-paused job has no
+            // supervisor yet, so resume's double-start guard must not see
+            // it as already running.
+            state: Mutex::new(if start_paused {
+                JobState::Paused
+            } else {
+                JobState::Downloading
+            }),
             segments: Mutex::new(Vec::new()),
             done: AtomicU64::new(0),
             speed_bps: AtomicU64::new(0),
@@ -635,6 +643,33 @@ impl Engine {
                 row.state
             )));
         }
+        // Guard against a second supervisor for the same job: a tiny
+        // download can finish before its supervisor's journaled state
+        // transition lands, so a queue runner polling the DB may still see
+        // `paused` and resume again (two supervisors racing on one part
+        // file — the loser fails the job with E_IO/E_SIZE_MISMATCH *after*
+        // the winner marked it done).
+        {
+            let jobs = self
+                .inner
+                .jobs
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(existing) = jobs.get(id)
+                && matches!(
+                    existing.state_now(),
+                    crate::engine::JobState::Downloading
+                        | crate::engine::JobState::Probing
+                        | crate::engine::JobState::Verifying
+                )
+            {
+                return Err(EngineError::Config(format!("job {id} is already running")));
+            }
+        }
+        // Transition the journaled state synchronously, before the
+        // supervisor spawns: queue runners and the UI count in-flight
+        // downloads by the journaled state.
+        self.inner.journal.set_state(id, "downloading", None)?;
         let spec = JobSpec {
             url: row.url.clone(),
             dest_dir: row
