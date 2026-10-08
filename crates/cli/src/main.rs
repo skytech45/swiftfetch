@@ -122,12 +122,16 @@ fn cmd_add(store: &Store, args: &[String]) -> Result<(), String> {
     }
     let id = repos::stage_download(
         store,
-        &url,
-        dir.as_deref(),
-        name.as_deref(),
-        queue.as_deref(),
-        true,
-        "cli",
+        &repos::StageRequest {
+            url,
+            dest_dir: dir,
+            filename: name,
+            queue_id: queue,
+            start_paused: true,
+            source: "cli".to_owned(),
+            kind: "file".to_owned(),
+            ..repos::StageRequest::default()
+        },
     )
     .map_err(|e| e.to_string())?;
     println!("staged {id}");

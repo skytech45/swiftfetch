@@ -2,7 +2,7 @@
 //! categories and settings. All functions take a [`Store`] and run
 //! synchronously — callers on async contexts wrap in `spawn_blocking`.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use rusqlite::OptionalExtension;
 
@@ -607,8 +607,18 @@ pub struct StagedDownload {
     pub queue_id: Option<String>,
     /// Start paused instead of immediately.
     pub start_paused: bool,
-    /// Who staged it (`cli|clipboard|api`).
+    /// Who staged it (`cli|clipboard|extension|api`).
     pub source: String,
+    /// Captured Cookie header, when the client forwarded one.
+    pub cookies: Option<String>,
+    /// Captured Referer, when the client forwarded one.
+    pub referer: Option<String>,
+    /// Job id written back by the app after it creates the download.
+    pub job_id: Option<String>,
+    /// Pipeline kind: `file|hls|dash|youtube`.
+    pub kind: String,
+    /// Structured meta (e.g. picked `YouTube` quality), JSON.
+    pub meta_json: Option<String>,
 }
 
 /// A control command from an out-of-process client targeting a live job.
@@ -628,30 +638,61 @@ pub struct CliCommand {
 /// # Errors
 ///
 /// Returns [`StoreError`] on SQL failure.
-pub fn stage_download(
-    store: &Store,
-    url: &str,
-    dest_dir: Option<&Path>,
-    filename: Option<&str>,
-    queue_id: Option<&str>,
-    start_paused: bool,
-    source: &str,
-) -> Result<String, StoreError> {
+/// A download staged by an out-of-process client.
+#[derive(Debug, Clone, Default)]
+pub struct StageRequest {
+    /// Source URL.
+    pub url: String,
+    /// Destination directory (`None` = default download dir).
+    pub dest_dir: Option<PathBuf>,
+    /// Requested filename (`None` = derive from probe).
+    pub filename: Option<String>,
+    /// Queue to enqueue into, if any.
+    pub queue_id: Option<String>,
+    /// Start paused instead of immediately.
+    pub start_paused: bool,
+    /// Who staged it (`cli|clipboard|extension|api`).
+    pub source: String,
+    /// Captured Cookie header, when the client forwarded one.
+    pub cookies: Option<String>,
+    /// Captured Referer, when the client forwarded one.
+    pub referer: Option<String>,
+    /// Pipeline kind: `file|hls|dash|youtube`.
+    pub kind: String,
+    /// Structured meta (e.g. the picked `YouTube` quality), JSON.
+    pub meta_json: Option<String>,
+}
+
+/// Stages a download request for the app to pick up. The write runs under
+/// `BEGIN IMMEDIATE` per the cross-process single-writer discipline.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn stage_download(store: &Store, request: &StageRequest) -> Result<String, StoreError> {
     let id = uuid::Uuid::new_v4().to_string();
-    let dest = dest_dir.map(|d| d.to_string_lossy().into_owned());
+    let dest = request
+        .dest_dir
+        .as_ref()
+        .map(|d| d.to_string_lossy().into_owned());
     store.with_conn_immediate(|conn| {
         conn.execute(
             "INSERT INTO staged_downloads (id, url, dest_dir, filename, queue_id, \
-             start_paused, source, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+             start_paused, source, cookies, referer, kind, meta_json, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, \
+             strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
             rusqlite::params![
                 id,
-                url,
+                request.url,
                 dest,
-                filename,
-                queue_id,
-                i64::from(start_paused),
-                source
+                request.filename,
+                request.queue_id,
+                i64::from(request.start_paused),
+                request.source,
+                request.cookies,
+                request.referer,
+                request.kind,
+                request.meta_json,
             ],
         )?;
         Ok(())
@@ -669,7 +710,8 @@ pub fn stage_download(
 pub fn take_staged_downloads(store: &Store) -> Result<Vec<StagedDownload>, StoreError> {
     store.with_conn_immediate(|conn| {
         let mut stmt = conn.prepare(
-            "SELECT id, url, dest_dir, filename, queue_id, start_paused, source \
+            "SELECT id, url, dest_dir, filename, queue_id, start_paused, source, \
+             cookies, referer, job_id, kind, meta_json \
              FROM staged_downloads WHERE consumed_at IS NULL ORDER BY created_at",
         )?;
         let rows = stmt
@@ -682,6 +724,11 @@ pub fn take_staged_downloads(store: &Store) -> Result<Vec<StagedDownload>, Store
                     r.get::<_, Option<String>>(4)?,
                     r.get::<_, i64>(5)?,
                     r.get::<_, String>(6)?,
+                    r.get::<_, Option<String>>(7)?,
+                    r.get::<_, Option<String>>(8)?,
+                    r.get::<_, Option<String>>(9)?,
+                    r.get::<_, String>(10)?,
+                    r.get::<_, Option<String>>(11)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -695,17 +742,52 @@ pub fn take_staged_downloads(store: &Store) -> Result<Vec<StagedDownload>, Store
         Ok(rows
             .into_iter()
             .map(
-                |(id, url, dest_dir, filename, queue_id, start_paused, source)| StagedDownload {
+                |(
                     id,
                     url,
-                    dest_dir: dest_dir.map(PathBuf::from),
+                    dest_dir,
                     filename,
                     queue_id,
-                    start_paused: start_paused != 0,
+                    start_paused,
                     source,
+                    cookies,
+                    referer,
+                    job_id,
+                    kind,
+                    meta_json,
+                )| {
+                    StagedDownload {
+                        id,
+                        url,
+                        dest_dir: dest_dir.map(PathBuf::from),
+                        filename,
+                        queue_id,
+                        start_paused: start_paused != 0,
+                        source,
+                        cookies,
+                        referer,
+                        job_id,
+                        kind,
+                        meta_json,
+                    }
                 },
             )
             .collect())
+    })
+}
+
+/// Writes back the job id after the app creates the download.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn set_staged_job_id(store: &Store, staged_id: &str, job_id: &str) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "UPDATE staged_downloads SET job_id = ?2 WHERE id = ?1",
+            rusqlite::params![staged_id, job_id],
+        )?;
+        Ok(())
     })
 }
 
@@ -758,5 +840,76 @@ pub fn take_pending_commands(store: &Store) -> Result<Vec<CliCommand>, StoreErro
             .into_iter()
             .map(|(id, job_id, action)| CliCommand { id, job_id, action })
             .collect())
+    })
+}
+
+// ── Media-job row management (M4) ────────────────────────────────────────
+
+/// Sets a download's state (and optional error) directly — used by the
+/// media pipeline, which drives rows outside the range-engine journal.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn set_download_state(
+    store: &Store,
+    id: &str,
+    state: &str,
+    error: Option<(&str, &str)>,
+) -> Result<(), StoreError> {
+    let (code, msg) = error.map_or((None, None), |(c, m)| {
+        (Some(c.to_owned()), Some(m.to_owned()))
+    });
+    store.with_conn(|conn| {
+        conn.execute(
+            "UPDATE downloads SET state = ?2, error_code = ?3, error_msg = ?4, \
+             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?1",
+            rusqlite::params![id, state, code, msg],
+        )?;
+        Ok(())
+    })
+}
+
+/// Updates a download's byte progress.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn set_download_progress(store: &Store, id: &str, done_bytes: i64) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "UPDATE downloads SET done_bytes = ?2, \
+             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?1",
+            rusqlite::params![id, done_bytes],
+        )?;
+        Ok(())
+    })
+}
+
+/// Records a completed download in history.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn insert_history(
+    store: &Store,
+    url: &str,
+    final_path: &str,
+    size_bytes: i64,
+    category_id: Option<&str>,
+) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "INSERT INTO history (id, url, final_path, size_bytes, category_id, completed_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+            rusqlite::params![
+                uuid::Uuid::new_v4().to_string(),
+                url,
+                final_path,
+                size_bytes,
+                category_id
+            ],
+        )?;
+        Ok(())
     })
 }

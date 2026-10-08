@@ -58,7 +58,10 @@ fn reopens_cleanly_with_migrations_applied_once() {
             })
         })
         .expect("count applied migrations");
-    assert_eq!(applied, 2, "schema v1+v2 must be applied exactly once");
+    assert_eq!(
+        applied, 4,
+        "schema v1+v2+v3+v4 must be applied exactly once"
+    );
 }
 
 #[test]
