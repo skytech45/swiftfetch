@@ -5,6 +5,62 @@ Keep a Changelog; versions follow SemVer.
 
 ## [Unreleased]
 
+### Milestone 4 — Browser capture + media + YouTube one-click (2026-10-07)
+
+#### Added
+
+- **Media engine** (`swiftfetch-media`, crates/media): HLS capture
+  (master + media playlists, `EXT-X-STREAM-INF` variant selection by
+  bandwidth/resolution, `EXT-X-MEDIA` subtitle renditions saved as
+  `.srt`/`.vtt` sidecars, AES-128 decryption for keys the server serves
+  directly, segment download with bounded concurrency); DASH capture
+  (`SegmentTemplate` with `$Number$`/`%0Nd$` padding and
+  `SegmentTimeline` segment counts); ffmpeg sidecar resolved at runtime
+  (`$SWIFTFETCH_FFMPEG` → PATH → app dir), argv arrays only, progress
+  from `-progress pipe:1`, stall timeout with kill, audio+video merge
+  (`-c copy -movflags +faststart`). DRM signals (`SAMPLE-AES`,
+  `ContentProtection`) abort with a clear "protected content — not
+  supported" error; no CDM, no license-server calls.
+- **YouTube one-click** (`swiftfetch-sites-youtube`, Build Prompt §12.4):
+  watch-page `player_response` extraction (brace-balanced, survives
+  braces in strings), playability gate (livestreams / rentals / DRM →
+  clean abort), itag reference table (H.264/VP9/AV1 video-only,
+  AAC/Opus audio, progressive 18/22 — data, not logic), quality list
+  ≥ 3 resolutions best-first, one-click pipeline (best video ≤ preferred
+  height + best AAC audio → ffmpeg merge → MP4). Cipher solver ships as a
+  hot-updatable `CipherSolver` trait: `RuntimeSolver` fetches the player
+  base.js at runtime and derives the transform chain (never hardcoded);
+  exactly one solve attempt, then the clean `E_EXTRACTOR_STALE` error.
+  Stream URLs are never logged or cached; every capture re-enumerates.
+- **Native messaging host** (`swiftfetch-native-host`): u32 LE
+  length-prefixed JSON over stdio (8 MiB cap), ping/add-download/
+  watch/status messages, staged captures consumed by the desktop app
+  via the shared SQLite DB (migrations V3 + V4 add cookies/referer/
+  job-id mapping and pipeline kind/meta), event polling pushes
+  progress/completed/error frames back to the extension; `--print-manifest`
+  emits the native-messaging manifest for installers.
+- **Browser extensions** (`extensions/chrome`, `extensions/firefox`):
+  MV3 service-worker + WebExtensions background, context-menu "Download
+  with SwiftFetch", and a YouTube floating button that shows the
+  quality list and triggers one-click capture.
+- **Desktop wiring**: the staged-capture bridge dispatches by pipeline
+  kind (`file|hls|dash|youtube`) — media/YouTube jobs drive their own
+  downloads rows (progress + settle + history), map the staged id to
+  the created job id for host event correlation, and report `E_STAGED_REJECTED`
+  for captures the app cannot start. Test server gained `Cookie`
+  capture for assertions; CI installs ffmpeg on Windows.
+
+#### Tests
+
+- `m4_media`: HLS AES-128 capture+remux, DASH capture+merge,
+  DRM abort — all against ffmpeg-generated fixtures (local; skipped
+  where ffmpeg is absent).
+- `m4_youtube`: quality list ≥ 3 itag-derived resolutions, 1080p
+  one-click → merged MP4, stale solver fails cleanly after exactly one
+  attempt, direct-URL formats skip the solver.
+- Capture-with-cookies round-trip: extension staging preserves the
+  forwarded Cookie/Referer through to the engine request.
+
 ### Milestone 3 — Scheduler + automation (2026-10-07)
 
 #### Added

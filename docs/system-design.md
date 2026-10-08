@@ -429,7 +429,7 @@ job row's `cookies_json` (needed for resume); they never leave the machine.
 | M1 ✅ | Download engine core | 100 MiB × 8-segment speedup; kill -9 resume; expiring-URL refresh; limiter ±10%; rebalancing improves time — all green (2026-10-05) |
 | M2 ✅ | Desktop app shell | main window/dialogs/categories/queues/tray (WebDriver e2e deferred to M3) — green 2026-10-07 |
 | M3 ✅ | Scheduler, quotas, clipboard, drag-drop, AV hook, CLI | scheduler fires on time; quota gates; EICAR flagged (fake + live Defender); CLI round-trips — green 2026-10-07 |
-| M4 | Browser extensions + native host + media + YouTube one-click | capture with cookies forwarded; HLS AES-128 + DASH merge; DRM aborts cleanly; YouTube quality picker lists ≥3 itag-derived resolutions; 1080p one-click → merged MP4; stale-solver fixture → clean error ≤1 attempt |
+| M4 ✅ | Browser extensions + native host + media + YouTube one-click | capture with cookies forwarded; HLS AES-128 + DASH merge; DRM aborts cleanly; quality picker ≥3 itag-derived resolutions; 1080p one-click → merged MP4; stale-solver → clean error ≤1 attempt — green 2026-10-07 |
 | M5 | Site grabber, mirrors, i18n, updater, packaging | robots honored; mirror failover; EN+HI complete; signed installers smoke-tested |
 | M6 | Torrents, checksums, plugin surface, hardening | torrent round-trip; checksum states; fuzz/audit clean; RSS < 300 MiB @ 1 GiB |
 

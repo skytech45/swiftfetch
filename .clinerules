@@ -1,0 +1,15 @@
+# SwiftFetch — rules for working in this repo (condensed handoff; FULL version: ../.clinerules/ — read it)
+
+This is **SwiftFetch** (working name), an IDM-class cross-platform download manager for Sachin Kumar. Parent folder `D:\project zen download manager` holds the PRD/System-Design/Build-Prompt PDFs, `section1.md` (chat log M0→M2), `.clinerules/` (full project context — READ IT before starting), and `.cline-data/` (session digests, raw logs, memory, skills).
+
+**Stack (locked):** Rust + tokio, reqwest/rustls, Tauri v2, React 18 + Vite + TS strict, SQLite WAL (rusqlite + refinery), ffmpeg sidecar, MV3 + Firefox extensions + Rust native-messaging host, librqbit (M6), Tauri updater.
+
+**Status (2026-10-07):** M0–M4 COMPLETE, committed, pushed. M4 delivered: media/{hls,dash,ffmpeg}, native-host/{lib,bridge,framing}, youtube/{cipher,itag,player}, chrome+firefox extensions, migrations V3/V4, desktop M4 wiring, m4_media.rs + m4_youtube.rs tests (90 workspace tests green, clippy -D warnings clean).
+
+**Protocol:** milestones M0–M6 strictly in order; after each milestone deliver (conventional commit, CHANGELOG entry, how-to-run, PASS/FAIL acceptance evidence, open questions) and STOP for Sachin's confirmation. system-design.md = architectural truth, Build Prompt = behavioral truth; conflicts are ASKED, never silently resolved.
+
+**Hard rules:** no DRM circumvention ever; no IDM branding/assets/code; robots.txt; ≤1 req/s spider; secrets in OS keychain; argv arrays only (no shell interpolation); telemetry opt-in only; no unwrap() on engine paths; clippy -D warnings pedantic. YouTube cipher solver: hot-updatable behind a trait, fetches base player JS at runtime, NEVER hardcoded, 1 solve attempt then clean "player changed" error; DRM/livestream/rental → clean abort.
+
+**Known engine pitfalls (details in ../.clinerules/swiftfetch-project.md):** resume must journal "downloading" synchronously before spawning + jobs-map guard (double-supervisor race); empty-segment journal → plan fresh (0-byte E_SIZE_MISMATCH storm); resolve_destination consults claimed_final_paths; tests never share hardcoded dest dirs; Store not Sync → Arc<Mutex<Store>> + spawn_blocking; tauri::async_runtime::spawn inside Tauri setup; EICAR vs live Defender (os error 225) → synthetic marker in CI, real-EICAR #[ignore] local-only.
+
+**Env (Git Bash):** `export PATH="/c/Users/sachi/.cargo/bin:$PATH"`; rustc 1.99.0 msvc; Node v22.23.2.
