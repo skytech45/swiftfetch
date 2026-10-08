@@ -20,6 +20,15 @@ export default tseslint.config(
     },
   },
   {
+    files: ["extensions/**/*.js"],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.webextensions,
+      },
+    },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
       globals: {
