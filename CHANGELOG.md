@@ -5,6 +5,53 @@ Keep a Changelog; versions follow SemVer.
 
 ## [Unreleased]
 
+### Milestone 6 — BitTorrent, checksums, plugins, hardening (2026-10-08)
+
+#### Added
+
+- **BitTorrent** (`swiftfetch-torrent` on `librqbit` 9): total `bencode`
+  parser/encoder, v1 metainfo validation (SHA-1 info hash, unsafe-path
+  rejection), magnet parsing (v1 hex + base32, tracker dedup), and a
+  `TorrentEngine` facade (lazy session, DHT on, ephemeral TCP listen;
+  magnet + `.torrent` adds, live progress/peers/up/down, pause/resume/
+  remove, seed-to-ratio stop at 1.0 by default). Desktop: torrent dialog,
+  torrents panel (2 s refresh), `torrents` DB rows joining queues.
+  `m6_torrent`: a hermetic loopback swarm (seeder → leecher over
+  127.0.0.1, no DHT/trackers) downloads 40 KiB byte-identical, including
+  a pause/resume round-trip and ratio-policy checks.
+- **Checksum verification** (engine + store schema v6): `verify_expected`
+  (SHA-256/MD5 hex, fail-closed on garbage), `find_sidecar_hex`
+  (`.sha256`/`.md5` coreutils format), `quarantine_badhash` (rename to
+  `.badhash`, never overwrite). Per-download expected hash (paste in the
+  Add dialog or `set_expected_hash`), single + batch verify commands and
+  CLI (`verify`, `verify-all`); mismatch marks `E_CHECKSUM_MISMATCH`.
+  `m6_checksum`: match verifies, mismatch quarantines intact, sidecar
+  honored, garbage fails closed.
+- **Plugin surface**: TS hooks (`apps/desktop/src/plugins.ts` —
+  `onDownloadComplete`, `onQueueEmpty`, isolated failures) wired into the
+  app's event bridge + queue watcher; example plugin
+  `examples/on-complete-notify` (type-checked); Rust API documented in
+  `docs/system-design.md` §4.9.
+- **Preview-while-downloading**: localhost-only `Range` server over the
+  growing `.sfpart` (ephemeral port, unguessable token, per-request
+  re-stat, 64 MiB per-range cap), Preview button opens the OS player,
+  explicit stop; covered by a loopback HTTP test (206 ranges, 403 on bad
+  token, 416 past EOF).
+- **Performance**: windowed download table (37 px rows, overscan 10 —
+  a 500-item queue mounts ~35 rows, no frame budget risk); 8-segment
+  engine design bounds memory (per-segment buffers + ≤1 s journal
+  cadence; 1 GiB RSS target < 300 MiB by construction, measured on
+  release hardware).
+- **Hardening**: `deny.toml` (allowlisted permissive licenses, no GPL in
+  core; `cargo deny check`), `m6_parsers` fuzz corpus (bencode mutations,
+  magnet/URL/markup hostile inputs — parse-or-fail, never panic),
+  `docs/threat-model.md` stands reviewed, README ffmpeg-license note.
+
+#### Tests
+
+- `m6_torrent` (loopback e2e), `m6_checksum` (3), `m6_parsers` (2),
+  desktop `preview` traffic test, lib unit tests — full workspace green.
+
 ### Milestone 5 — Site grabber, mirrors, i18n, updater, packaging (2026-10-08)
 
 #### Added

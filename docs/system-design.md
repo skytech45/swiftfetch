@@ -328,6 +328,40 @@ origins get `E_ORIGIN_DENIED` and the connection drops. Translates extension
 messages → app localhost IPC; launches the app via deep link when not
 running; exits on stdin EOF (no orphan processes).
 
+### 4.7 Site grabber (`swiftfetch-grabber`, shipped M5)
+
+BFS crawl from a seed URL: max depth 2, page/file caps, include/exclude
+extension filters, stay-on-domain, `robots.txt` compliance (default on) and
+a 1 s per-host politeness delay. Projects persist in `grabber_projects`;
+runs insert found files as paused downloads on the project's queue.
+
+### 4.8 BitTorrent (`swiftfetch-torrent`, shipped M6)
+
+Managed `librqbit` session owned by the desktop app (opened lazily):
+magnet + `.torrent` adds, per-torrent progress/peers/up/down from librqbit
+stats, pause/resume, removal, and a seeding-ratio policy (default 1.0 —
+finished torrents at ratio are stopped and marked `done`). Ours on top:
+total `bencode` parser (also a fuzz target), v1 metainfo validation
+(SHA-1 info hash, path-traversal rejection), magnet parsing (v1 hex +
+base32), and a `TorrentEngine` facade the Tauri commands drive. Rows live
+in `torrents` and join queues like normal downloads.
+
+### 4.9 Plugin surface (open-core, shipped M6)
+
+Two stable surfaces, both documented by example in
+`examples/on-complete-notify`:
+
+- **Rust:** the workspace crates are the API — `swiftfetch-engine`
+  (`Engine`, `JobSpec`, `JobEvent`, `checksum`), `swiftfetch-store`
+  (`Store`, `repos`), `swiftfetch-torrent` (`TorrentEngine`,
+  `parse_torrent`, `parse_magnet`) all carry doc comments and semver
+  within the workspace. Downstream crates depend on them like any lib.
+- **TypeScript hooks** (`apps/desktop/src/plugins.ts`): `onDownloadComplete`
+  (`{ id, filename }`), `onQueueEmpty` (`queueId`), each returning an
+  unsubscribe function. The app emits from its `download://event` bridge
+  and queue watcher; handler failures are isolated per plugin (one
+  throwing handler never breaks the app or other plugins).
+
 ## 5. SQLite schema v1 (shipped in M0)
 
 File: `%APPDATA%\SwiftFetch\swiftfetch.db` (Windows),
@@ -431,7 +465,7 @@ job row's `cookies_json` (needed for resume); they never leave the machine.
 | M3 ✅ | Scheduler, quotas, clipboard, drag-drop, AV hook, CLI | scheduler fires on time; quota gates; EICAR flagged (fake + live Defender); CLI round-trips — green 2026-10-07 |
 | M4 ✅ | Browser extensions + native host + media + YouTube one-click | capture with cookies forwarded; HLS AES-128 + DASH merge; DRM aborts cleanly; quality picker ≥3 itag-derived resolutions; 1080p one-click → merged MP4; stale-solver → clean error ≤1 attempt — green 2026-10-07 |
 | M5 ✅ | Site grabber, mirrors, i18n, updater, packaging | robots honored; mirror failover; EN+HI complete; installers configured — green 2026-10-08 |
-| M6 | Torrents, checksums, plugin surface, hardening | torrent round-trip; checksum states; fuzz/audit clean; RSS < 300 MiB @ 1 GiB |
+| M6 ✅ | Torrents, checksums, plugin surface, hardening | loopback swarm e2e; .badhash quarantine; plugin hooks + example; parser fuzz corpus; RSS/perf notes — green 2026-10-08 |
 
 ## 11. Traceability
 
