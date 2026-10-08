@@ -15,6 +15,7 @@ pub mod engine;
 pub mod errors;
 pub mod journal;
 pub mod limiter;
+pub mod mirrors;
 pub mod segment;
 pub mod segmenter;
 mod supervisor;
@@ -25,4 +26,5 @@ pub use engine::{
 };
 pub use errors::EngineError;
 pub use journal::{JobRow, ProbeUpdate, SegmentRow};
+pub use mirrors::{MirrorCandidate, MirrorRefresher, order_mirrors};
 pub use segmenter::MIN_SEGMENT_BYTES;
