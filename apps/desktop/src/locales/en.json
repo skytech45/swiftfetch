@@ -158,5 +158,28 @@
     "available": "Version {version} is available.",
     "install": "Install and restart",
     "disabled": "Auto-update is not configured in this build."
+  },
+  "torrent": {
+    "title": "Torrents",
+    "add": "Add torrent",
+    "source": "Magnet link or .torrent file",
+    "sourcePlaceholder": "magnet:?xt=urn:btih:… or C:\\downloads\\file.torrent",
+    "seedRatio": "Seed to ratio (default 1.0)",
+    "invalidSource": "Enter a magnet: link or a .torrent file path.",
+    "empty": "No torrents yet — add a magnet link or .torrent file.",
+    "peers": "{count} peers"
+  },
+  "checksum": {
+    "expectedHash": "Expected SHA-256 / MD5 (optional)",
+    "expectedPlaceholder": "paste hex digest, or leave empty for sidecar detect",
+    "verify": "Verify",
+    "verifyAll": "Verify all",
+    "verified": "Checksum verified ✓",
+    "failed": "Checksum FAILED — file kept as .badhash",
+    "batch": "{ok} verified, {bad} failed"
+  },
+  "preview": {
+    "button": "Preview",
+    "opened": "Preview opened in your player"
   }
 }

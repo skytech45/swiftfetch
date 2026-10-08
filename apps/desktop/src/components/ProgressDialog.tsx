@@ -13,6 +13,28 @@ export function ProgressDialog({
   const [segments, setSegments] = useState<SegmentView[]>([]);
   const [mirrors, setMirrors] = useState<{ url: string; priority: number; fails: number; bytesOk: number }[]>([]);
   const [mirrorUrl, setMirrorUrl] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const verify = async (): Promise<void> => {
+    setNotice(null);
+    try {
+      const ok = await invoke<boolean>("verify_job", { id: job.id });
+      setNotice(ok ? t("checksum.verified") : t("checksum.failed"));
+    } catch (err) {
+      setNotice(String(err));
+    }
+  };
+
+  const preview = async (): Promise<void> => {
+    setNotice(null);
+    try {
+      const [token, url] = await invoke<[string, string]>("preview_start", { id: job.id });
+      await invoke("preview_open", { url });
+      setNotice(`${t("preview.opened")} (${token.slice(0, 8)}…)`);
+    } catch (err) {
+      setNotice(String(err));
+    }
+  };
 
   useEffect(() => {
     const load = (): void => {
@@ -66,10 +88,17 @@ export function ProgressDialog({
           })}
         </div>
         <div className="actions">
+          <button type="button" onClick={() => void verify()}>
+            {t("checksum.verify")}
+          </button>
+          <button type="button" onClick={() => void preview()}>
+            {t("preview.button")}
+          </button>
           <button type="button" className="primary" onClick={onClose}>
             {t("progress.close")}
           </button>
         </div>
+        {notice !== null && <p className="muted small">{notice}</p>}
         <h3>{t("mirrors.title")}</h3>
         {mirrors.length === 0 ? (
           <p className="muted small">{t("mirrors.empty")}</p>

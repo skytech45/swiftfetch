@@ -25,6 +25,7 @@ export function AddUrlDialog({
   const [queueId, setQueueId] = useState("");
   const [maxConns, setMaxConns] = useState(8);
   const [mode, setMode] = useState<StartMode>("now");
+  const [expectedHash, setExpectedHash] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -44,13 +45,17 @@ export function AddUrlDialog({
     }
     setBusy(true);
     try {
-      await invoke("add_url", {
+      const id = await invoke<string>("add_url", {
         url,
         categoryId: categoryId || null,
         queueId: mode === "queue" ? queueId || "main" : queueId || null,
         maxConns,
         startNow: mode === "now",
       });
+      const hash = expectedHash.trim();
+      if (hash.length > 0) {
+        await invoke("set_expected_hash", { id, hex: hash });
+      }
       onAdded();
     } catch (err) {
       setError(String(err));
@@ -108,6 +113,15 @@ export function AddUrlDialog({
             max={32}
             value={maxConns}
             onChange={(e) => setMaxConns(Number(e.target.value))}
+          />
+        </label>
+        <label>
+          {t("checksum.expectedHash")}
+          <input
+            value={expectedHash}
+            onChange={(e) => setExpectedHash(e.target.value)}
+            placeholder={t("checksum.expectedPlaceholder")}
+            spellCheck={false}
           />
         </label>
         <fieldset className="startmode">

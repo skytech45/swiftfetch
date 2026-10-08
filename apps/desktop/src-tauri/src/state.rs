@@ -49,4 +49,13 @@ pub struct AppState {
     pub post_action_cancel: CancellationToken,
     /// Queues whose post-action countdown already fired this drain.
     pub post_action_fired: std::sync::Mutex<std::collections::HashSet<String>>,
+    /// BitTorrent session (M6), opened lazily on first torrent command so
+    /// non-torrent users never pay for DHT startup.
+    pub torrent: tokio::sync::Mutex<Option<Arc<swiftfetch_torrent::TorrentEngine>>>,
+    /// Maps SwiftFetch torrent-row ids to librqbit torrent ids (M6).
+    pub torrent_ids:
+        std::sync::Mutex<std::collections::HashMap<String, swiftfetch_torrent::TorrentId>>,
+    /// Running preview servers by token (M6); abort the task to stop one.
+    pub preview_servers:
+        std::sync::Mutex<std::collections::HashMap<String, tokio::task::JoinHandle<()>>>,
 }

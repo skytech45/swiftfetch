@@ -15,6 +15,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 swiftfetch-engine = { workspace = true }
 swiftfetch-grabber = { path = "../../../crates/grabber" }
+swiftfetch-torrent = { path = "../../../crates/torrent" }
+opener = "0.8"
 swiftfetch-media = { workspace = true }
 swiftfetch-net = { workspace = true }
 swiftfetch-sites-youtube = { workspace = true }

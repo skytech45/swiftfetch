@@ -12,8 +12,11 @@ import {
   type QueueView,
 } from "./jobs";
 import { saveTheme, useI18n, useTheme, type Theme } from "./i18n";
+import { emitDownloadComplete, emitQueueEmpty } from "./plugins";
 import { AddUrlDialog } from "./components/AddUrlDialog";
+import { AddTorrentDialog } from "./components/AddTorrentDialog";
 import { GrabberDialog } from "./components/GrabberDialog";
+import { TorrentsPanel } from "./components/TorrentsPanel";
 import { ProgressDialog } from "./components/ProgressDialog";
 import { QueuePanel } from "./components/QueuePanel";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -49,6 +52,8 @@ export default function App() {
   const [addUrl, setAddUrl] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [grabberOpen, setGrabberOpen] = useState(false);
+  const [torrentOpen, setTorrentOpen] = useState(false);
+  const [torrentsOpen, setTorrentsOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [sortDesc, setSortDesc] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -131,6 +136,40 @@ export default function App() {
     };
   }, [refreshMeta, pushToast, t]);
 
+  // M6 plugin hooks: completions fan out to registered plugins, and a
+  // queue whose active count drops to zero emits a drain event.
+  const jobsRef = useRef(jobs);
+  jobsRef.current = jobs;
+  const prevQueueActive = useRef(new Map<string, number>());
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    void import("@tauri-apps/api/event").then(({ listen }) =>
+      listen<{ jobId: string; kind: string }>("download://event", (e) => {
+        if (e.payload.kind === "completed") {
+          const done = jobsRef.current.find((j) => j.id === e.payload.jobId);
+          emitDownloadComplete({ id: e.payload.jobId, filename: done?.filename ?? "" });
+        }
+      }).then((offFn) => {
+        off = offFn;
+      }),
+    );
+    return () => off?.();
+  }, []);
+  useEffect(() => {
+    const activeByQueue = new Map<string, number>();
+    for (const job of jobs) {
+      if (["downloading", "probing", "verifying"].includes(job.state) && job.queueId !== null) {
+        activeByQueue.set(job.queueId, (activeByQueue.get(job.queueId) ?? 0) + 1);
+      }
+    }
+    for (const queue of queues) {
+      const before = prevQueueActive.current.get(queue.id) ?? 0;
+      const after = activeByQueue.get(queue.id) ?? 0;
+      if (before > 0 && after === 0) emitQueueEmpty(queue.id);
+    }
+    prevQueueActive.current = activeByQueue;
+  }, [jobs, queues]);
+
   const visible = useMemo(() => {
     const filtered =
       filter === "all" ? jobs : jobs.filter((j) => j.categoryId === filter);
@@ -202,6 +241,17 @@ export default function App() {
   );
 
   const detailJob = detailId === null ? null : (jobs.find((j) => j.id === detailId) ?? null);
+
+  // M6 performance: windowed table rendering — only the visible slice of
+  // rows mounts, so a 500-item queue never blocks a frame.
+  const ROW_H = 37;
+  const OVERSCAN = 10;
+  const [scrollTop, setScrollTop] = useState(0);
+  const tableScroll = useRef<HTMLDivElement>(null);
+  const winStart = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const winRows = visible.slice(winStart, winStart + Math.ceil(480 / ROW_H) + OVERSCAN * 2);
+  const padTop = winStart * ROW_H;
+  const padBottom = Math.max(0, (visible.length - winStart - winRows.length) * ROW_H);
 
   // Drag a URL onto the window → open the add dialog prefilled (M3).
   const onDragOver = useCallback((e: React.DragEvent) => {
@@ -314,6 +364,22 @@ export default function App() {
         <button type="button" onClick={() => void pauseAll()}>
           {t("toolbar.pauseAll")}
         </button>
+        <button type="button" onClick={() => setTorrentOpen(true)}>
+          {t("torrent.add")}
+        </button>
+        <button type="button" onClick={() => setTorrentsOpen((v) => !v)}>
+          {t("torrent.title")}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void invoke<[number, number]>("verify_all").then(([ok, bad]) =>
+              pushToast({ text: t("checksum.batch", { ok, bad }) }),
+            );
+          }}
+        >
+          {t("checksum.verifyAll")}
+        </button>
         <span className="spacer" />
         <button type="button" onClick={() => setGrabberOpen(true)}>
           {t("grabber.title")}
@@ -347,9 +413,19 @@ export default function App() {
         </aside>
 
         <section className="table-wrap">
+          {torrentsOpen && (
+            <div className="torrents-wrap">
+              <TorrentsPanel />
+            </div>
+          )}
           {visible.length === 0 ? (
             <p className="muted empty">{t("table.empty")}</p>
           ) : (
+            <div
+              className="table-scroll"
+              ref={tableScroll}
+              onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+            >
             <table className="downloads" data-testid="download-table">
               <thead>
                 <tr>
@@ -372,7 +448,12 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((job) => (
+                {padTop > 0 && (
+                  <tr className="spacer">
+                    <td colSpan={8} style={{ height: padTop, padding: 0, border: 0 }} />
+                  </tr>
+                )}
+                {winRows.map((job) => (
                   <JobRow
                     key={job.id}
                     job={job}
@@ -388,8 +469,14 @@ export default function App() {
                     onOpen={() => setDetailId(job.id)}
                   />
                 ))}
+                {padBottom > 0 && (
+                  <tr className="spacer">
+                    <td colSpan={8} style={{ height: padBottom, padding: 0, border: 0 }} />
+                  </tr>
+                )}
               </tbody>
             </table>
+            </div>
           )}
         </section>
       </div>
@@ -431,6 +518,9 @@ export default function App() {
         <SettingsDialog onClose={() => setSettingsOpen(false)} />
       )}
       {grabberOpen && <GrabberDialog onClose={() => setGrabberOpen(false)} />}
+      {torrentOpen && (
+        <AddTorrentDialog onClose={() => setTorrentOpen(false)} onAdded={() => setTorrentOpen(false)} />
+      )}
       {detailJob && (
         <ProgressDialog job={detailJob} onClose={() => setDetailId(null)} />
       )}

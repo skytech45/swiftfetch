@@ -42,7 +42,10 @@ fn usage() -> &'static str {
      \x20 grab <seed> [--depth N] [--max-pages N] [--include zip,pdf]\n\
      \x20     Crawl a site (robots.txt honored) and list found files.\n\
      \x20 mirror add <id> <url>      Add a mirror URL to a download.\n\
-     \x20 mirror list <id>           List a download's mirrors.\n\n\
+     \x20 mirror list <id>           List a download's mirrors.\n\
+     \x20 verify <id>                Verify a completed download against its\n\
+     \x20     expected hash (or sidecar); mismatch quarantines to .badhash.\n\
+     \x20 verify-all                 Batch-verify all completed downloads.\n\n\
      Ids may be full UUIDs or unique prefixes (8+ chars)."
 }
 
@@ -66,6 +69,8 @@ fn run(args: &[String]) -> Result<(), String> {
             &args[2.min(args.len())..],
         ),
         "mirror" => cmd_mirror(&store, &args[1.min(args.len())..]),
+        "verify" => cmd_verify(&store, arg(args, 1, "verify <id>")?.as_str()),
+        "verify-all" => cmd_verify_all(&store),
         "--help" | "-h" | "help" => {
             println!("{}", usage());
             Ok(())
@@ -253,6 +258,67 @@ fn cmd_queue_active(store: &Store, prefix: &str, active: bool) -> Result<(), Str
 
 fn short(id: &str) -> String {
     id.chars().take(8).collect()
+}
+
+/// Verifies one completed download against its expected hash (row value or
+/// sidecar). Mismatches are quarantined to `.badhash`.
+fn cmd_verify(store: &Store, prefix: &str) -> Result<(), String> {
+    use swiftfetch_engine::checksum::{find_sidecar_hex, quarantine_badhash, verify_expected};
+    let id = resolve_job(store, prefix)?;
+    let row = repos::get_download(store, &id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("download {id} vanished"))?;
+    let expected = repos::list_checksum_jobs(store)
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|j| j.id == id)
+        .and_then(|j| j.expected_sha256)
+        .or_else(|| find_sidecar_hex(std::path::Path::new(&row.final_path)))
+        .ok_or_else(|| "no expected hash set and no .sha256/.md5 sidecar found".to_owned())?;
+    let path = std::path::PathBuf::from(&row.final_path);
+    match verify_expected(&path, &expected) {
+        Ok(true) => {
+            repos::set_checksum_state(store, &id, "verified").map_err(|e| e.to_string())?;
+            println!("verified ✓ {id}");
+            Ok(())
+        }
+        Ok(false) => {
+            let bad = quarantine_badhash(&path).map_err(|e| e.to_string())?;
+            repos::set_checksum_state(store, &id, "failed").map_err(|e| e.to_string())?;
+            println!("checksum FAILED — kept as {}", bad.display());
+            Ok(())
+        }
+        Err(e) => Err(format!("cannot read file: {e}")),
+    }
+}
+
+/// Batch-verifies every completed download with an expectation.
+fn cmd_verify_all(store: &Store) -> Result<(), String> {
+    use swiftfetch_engine::checksum::{find_sidecar_hex, quarantine_badhash, verify_expected};
+    let jobs = repos::list_checksum_jobs(store).map_err(|e| e.to_string())?;
+    let mut verified = 0u32;
+    let mut failed = 0u32;
+    for job in &jobs {
+        let expected = job
+            .expected_sha256
+            .clone()
+            .or_else(|| find_sidecar_hex(std::path::Path::new(&job.final_path)));
+        let Some(hex) = expected else { continue };
+        let path = std::path::PathBuf::from(&job.final_path);
+        if verify_expected(&path, &hex).unwrap_or(false) {
+            repos::set_checksum_state(store, &job.id, "verified").map_err(|e| e.to_string())?;
+            verified += 1;
+        } else {
+            let _ = quarantine_badhash(&path);
+            repos::set_checksum_state(store, &job.id, "failed").map_err(|e| e.to_string())?;
+            failed += 1;
+        }
+    }
+    println!(
+        "verify-all: {verified} verified, {failed} failed ({} jobs)",
+        jobs.len()
+    );
+    Ok(())
 }
 
 /// Crawls a site and lists the downloadable files found (robots.txt is

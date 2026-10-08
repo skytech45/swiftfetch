@@ -158,5 +158,28 @@
     "available": "संस्करण {version} उपलब्ध है।",
     "install": "इंस्टॉल करके पुनः शुरू करें",
     "disabled": "इस बिल्ड में ऑटो-अपडेट कॉन्फ़िगर नहीं है।"
+  },
+  "torrent": {
+    "title": "टोरेंट",
+    "add": "टोरेंट जोड़ें",
+    "source": "मैग्नेट लिंक या .torrent फ़ाइल",
+    "sourcePlaceholder": "magnet:?xt=urn:btih:… या C:\\downloads\\file.torrent",
+    "seedRatio": "सीड अनुपात (डिफ़ॉल्ट 1.0)",
+    "invalidSource": "magnet: लिंक या .torrent फ़ाइल पाथ दर्ज करें।",
+    "empty": "अभी कोई टोरेंट नहीं — मैग्नेट लिंक या .torrent फ़ाइल जोड़ें।",
+    "peers": "{count} पीयर"
+  },
+  "checksum": {
+    "expectedHash": "अपेक्षित SHA-256 / MD5 (वैकल्पिक)",
+    "expectedPlaceholder": "हेक्स डाइजेस्ट चिपकाएं, या साइडकार जांच के लिए खाली छोड़ें",
+    "verify": "सत्यापित करें",
+    "verifyAll": "सभी सत्यापित करें",
+    "verified": "चेकसम सत्यापित ✓",
+    "failed": "चेकसम विफल — फ़ाइल .badhash के रूप में रखी गई",
+    "batch": "{ok} सत्यापित, {bad} विफल"
+  },
+  "preview": {
+    "button": "पूर्वावलोकन",
+    "opened": "पूर्वावलोकन आपके प्लेयर में खुला"
   }
 }

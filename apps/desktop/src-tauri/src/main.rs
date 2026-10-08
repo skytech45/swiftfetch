@@ -9,8 +9,10 @@
 
 mod automation;
 mod commands;
+mod preview;
 mod queue;
 mod state;
+mod torrents;
 
 use std::sync::Arc;
 
@@ -108,6 +110,9 @@ fn main() {
                 }),
                 post_action_cancel: tokio_util::sync::CancellationToken::new(),
                 post_action_fired: std::sync::Mutex::new(std::collections::HashSet::new()),
+                torrent: tokio::sync::Mutex::new(None),
+                torrent_ids: std::sync::Mutex::new(std::collections::HashMap::new()),
+                preview_servers: std::sync::Mutex::new(std::collections::HashMap::new()),
             });
             app.manage(app_state.clone());
 
@@ -211,6 +216,17 @@ fn main() {
             commands::list_mirrors,
             commands::remove_mirror,
             commands::get_update_status,
+            torrents::torrent_add,
+            torrents::torrent_list,
+            torrents::torrent_pause,
+            torrents::torrent_resume,
+            torrents::torrent_remove,
+            torrents::set_expected_hash,
+            torrents::verify_job,
+            torrents::verify_all,
+            torrents::preview_start,
+            torrents::preview_open,
+            torrents::preview_stop,
         ])
         .run(tauri::generate_context!())
         .expect("SwiftFetch desktop runtime failed to start");
