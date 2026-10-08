@@ -173,83 +173,364 @@ async fn consume_staged(app: &tauri::AppHandle, state: &Arc<AppState>) -> Result
         .map_err(|e| e.to_string())?
     };
     for item in staged {
-        let dest = item
-            .dest_dir
-            .clone()
-            .unwrap_or_else(repos::default_download_dir);
-        let mut spec = swiftfetch_engine::JobSpec::new(&item.url, dest);
-        spec.filename = item.filename.clone();
-        spec.start_paused = item.start_paused || item.source == "cli";
-        spec.max_conns = 8;
-        match state.engine.start_job(spec).await {
-            Ok((id, rx)) => {
-                tracing::info!(source = %item.source, staged_id = %item.id, job = %id, "staged download accepted");
-                // Category + queue exactly like the add_url command.
-                let cats = {
-                    let store = Arc::clone(&state.store);
-                    tokio::task::spawn_blocking(move || {
-                        repos::list_categories(
-                            &store
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner),
-                        )
-                    })
-                    .await
-                    .map_err(|e| format!("categories: {e}"))?
-                    .map_err(|e| e.to_string())?
-                };
-                let filename = item.url.rsplit('/').next().unwrap_or("").to_owned();
-                if let Some(cat) = repos::categorize(&cats, &filename) {
-                    let store = Arc::clone(&state.store);
-                    let id2 = id.clone();
-                    let cat2 = cat.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        repos::set_category(
-                            &store
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner),
-                            &id2,
-                            Some(&cat2),
-                        )
-                    })
-                    .await;
-                }
-                if let Some(qid) = &item.queue_id {
-                    let store = Arc::clone(&state.store);
-                    let id2 = id.clone();
-                    let qid2 = qid.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        repos::enqueue(
-                            &store
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner),
-                            &qid2,
-                            &id2,
-                        )
-                    })
-                    .await;
-                }
-                let app2 = app.clone();
-                let state2 = Arc::clone(state);
-                let id2 = id.clone();
-                tauri::async_runtime::spawn(async move {
-                    crate::queue::forward_for(app2, id2, rx).await;
-                    state2.queue_wake.notify_one();
-                });
-            }
-            Err(err) => {
-                tracing::warn!(url = %item.url, error = %err, "staged download rejected");
-                let _ = app.emit(
-                    "download://event",
-                    serde_json::json!({
-                        "jobId": item.id, "kind": "staged-rejected",
-                        "event": { "code": "E_STAGED_REJECTED", "message": err.to_string() }
-                    }),
-                );
-            }
+        let id = match item.kind.as_str() {
+            "youtube" => spawn_youtube_job(app, state, &item).await,
+            "hls" | "dash" => spawn_media_job(app, state, &item, &item.kind).await,
+            _ => start_file_job(app, state, &item).await,
+        };
+        if let Some(id) = &id {
+            // Map the staged row to the created job so the native host can
+            // push progress/completed/error events to the extension.
+            let store = Arc::clone(&state.store);
+            let staged_id = item.id.clone();
+            let job_id = id.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                repos::set_staged_job_id(
+                    &store
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner),
+                    &staged_id,
+                    &job_id,
+                )
+            })
+            .await;
         }
     }
     Ok(())
+}
+
+/// Shared categorize + enqueue tail for all staged jobs.
+async fn finish_job_setup(
+    state: &Arc<AppState>,
+    id: &str,
+    item: &repos::StagedDownload,
+    filename: &str,
+) {
+    let cats = {
+        let store = Arc::clone(&state.store);
+        tokio::task::spawn_blocking(move || {
+            repos::list_categories(
+                &store
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+            )
+        })
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+    };
+    if let Some(cats) = cats
+        && let Some(cat) = repos::categorize(&cats, filename)
+    {
+        let store = Arc::clone(&state.store);
+        let id2 = id.to_owned();
+        let cat2 = cat.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            repos::set_category(
+                &store
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+                &id2,
+                Some(&cat2),
+            )
+        })
+        .await;
+    }
+    if let Some(qid) = &item.queue_id {
+        let store = Arc::clone(&state.store);
+        let id2 = id.to_owned();
+        let qid2 = qid.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            repos::enqueue(
+                &store
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+                &qid2,
+                &id2,
+            )
+        })
+        .await;
+    }
+}
+
+/// Regular range-download job (M1 engine path) with the forwarded context.
+async fn start_file_job(
+    app: &tauri::AppHandle,
+    state: &Arc<AppState>,
+    item: &repos::StagedDownload,
+) -> Option<String> {
+    let dest = item
+        .dest_dir
+        .clone()
+        .unwrap_or_else(repos::default_download_dir);
+    let mut spec = swiftfetch_engine::JobSpec::new(&item.url, dest);
+    spec.filename = item.filename.clone();
+    spec.start_paused = item.start_paused || item.source == "cli";
+    spec.max_conns = 8;
+    spec.cookies = item.cookies.clone();
+    spec.referer = item.referer.clone();
+    match state.engine.start_job(spec).await {
+        Ok((id, rx)) => {
+            tracing::info!(
+                source = %item.source,
+                staged_id = %item.id,
+                job = %id,
+                "staged download accepted"
+            );
+            let filename = item
+                .filename
+                .clone()
+                .unwrap_or_else(|| item.url.rsplit('/').next().unwrap_or("").to_owned());
+            finish_job_setup(state, &id, item, &filename).await;
+            let app2 = app.clone();
+            let state2 = Arc::clone(state);
+            let id2 = id.clone();
+            tauri::async_runtime::spawn(async move {
+                crate::queue::forward_for(app2, id2, rx).await;
+                state2.queue_wake.notify_one();
+            });
+            Some(id)
+        }
+        Err(err) => {
+            emit_rejected(app, item, &err.to_string());
+            None
+        }
+    }
+}
+
+/// Finalizes a media row (done or error) and reports to the UI. `result`
+/// carries `(code, message)` on failure so engine/site error codes survive.
+async fn settle_media_job(
+    app: &tauri::AppHandle,
+    state: &Arc<AppState>,
+    id: &str,
+    url: &str,
+    final_path: &std::path::Path,
+    result: Result<(), (String, String)>,
+) {
+    match result {
+        Ok(()) => {
+            let size = std::fs::metadata(final_path)
+                .map(|m| m.len() as i64)
+                .unwrap_or(0);
+            {
+                let store = Arc::clone(&state.store);
+                let id3 = id.to_owned();
+                let url3 = url.to_owned();
+                let path3 = final_path.to_string_lossy().into_owned();
+                let _ = tokio::task::spawn_blocking(move || {
+                    let guard = store
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    repos::set_download_progress(&guard, &id3, size)?;
+                    repos::set_download_state(&guard, &id3, "done", None)?;
+                    repos::insert_history(&guard, &url3, &path3, size, None)
+                })
+                .await;
+            }
+            use tauri::Emitter;
+            let _ = app.emit(
+                "download://event",
+                serde_json::json!({"jobId": id, "kind": "completed",
+                    "event": {"path": final_path}}),
+            );
+            state.queue_wake.notify_one();
+        }
+        Err(err) => {
+            let (code, msg) = err;
+            {
+                let store = Arc::clone(&state.store);
+                let id3 = id.to_owned();
+                let code3 = code.clone();
+                let msg3 = msg.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    repos::set_download_state(
+                        &store
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner),
+                        &id3,
+                        "error",
+                        Some((&code3, &msg3)),
+                    )
+                })
+                .await;
+            }
+            use tauri::Emitter;
+            let _ = app.emit(
+                "download://event",
+                serde_json::json!({"jobId": id, "kind": "failed",
+                    "event": {"code": code, "message": msg}}),
+            );
+            state.queue_wake.notify_one();
+        }
+    }
+}
+
+/// Creates the downloads row for a media pipeline job and marks it
+/// downloading.
+async fn create_media_row(
+    state: &Arc<AppState>,
+    item: &repos::StagedDownload,
+    id: &str,
+    final_path: &std::path::Path,
+) {
+    let row_store = Arc::clone(&state.store);
+    let row_id = id.to_owned();
+    let row_url = item.url.clone();
+    let row_final = final_path.to_string_lossy().into_owned();
+    let _ = tokio::task::spawn_blocking(move || {
+        repos::insert_download(
+            &row_store
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+            &row_id,
+            &row_url,
+            &row_final,
+            None,
+            None,
+            1,
+        )
+    })
+    .await;
+    {
+        let store = Arc::clone(&state.store);
+        let id2 = id.to_owned();
+        let _ = tokio::task::spawn_blocking(move || {
+            repos::set_download_state(
+                &store
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner),
+                &id2,
+                "downloading",
+                None,
+            )
+        })
+        .await;
+    }
+}
+
+/// HLS/DASH pipeline job: a downloads row driven by `swiftfetch-media`,
+/// emitting `download://event` directly.
+async fn spawn_media_job(
+    app: &tauri::AppHandle,
+    state: &Arc<AppState>,
+    item: &repos::StagedDownload,
+    kind: &str,
+) -> Option<String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let dest_dir = item
+        .dest_dir
+        .clone()
+        .unwrap_or_else(repos::default_download_dir);
+    let filename = item
+        .filename
+        .clone()
+        .unwrap_or_else(|| format!("media-{}.mp4", &id[..8]));
+    let final_path = dest_dir.join(&filename);
+    create_media_row(state, item, &id, &final_path).await;
+    finish_job_setup(state, &id, item, &filename).await;
+    let app2 = app.clone();
+    let state2 = Arc::clone(state);
+    let kind2 = kind.to_owned();
+    let url = item.url.clone();
+    let job_path = final_path.clone();
+    let job_id = id.clone();
+    let ctx = swiftfetch_media::MediaContext {
+        cookies: item.cookies.clone(),
+        referer: item.referer.clone(),
+    };
+    tauri::async_runtime::spawn(async move {
+        let client = swiftfetch_net::HttpConfig::default().client();
+        let result = async {
+            let client = client.map_err(|e| ("E_MEDIA_PARSE".to_owned(), e.to_string()))?;
+            swiftfetch_media::capture(
+                &client,
+                &ctx,
+                &kind2,
+                &url,
+                &job_path,
+                None,
+                &tokio_util::sync::CancellationToken::new(),
+                |_| {},
+            )
+            .await
+            .map_err(|e| (e.code().to_owned(), e.to_string()))
+        }
+        .await;
+        settle_media_job(&app2, &state2, &job_id, &url, &job_path, result).await;
+    });
+    Some(id)
+}
+
+/// YouTube one-click job (§12.4): re-enumerates fresh (stream URLs expire),
+/// picks ≤ the staged height, downloads and merges to MP4.
+async fn spawn_youtube_job(
+    app: &tauri::AppHandle,
+    state: &Arc<AppState>,
+    item: &repos::StagedDownload,
+) -> Option<String> {
+    let meta: serde_json::Value =
+        serde_json::from_str(item.meta_json.as_deref().unwrap_or("{}")).unwrap_or_default();
+    let prefer_height = meta
+        .get("height")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|h| u32::try_from(h).ok())
+        .unwrap_or(1080);
+    let id = uuid::Uuid::new_v4().to_string();
+    let dest_dir = item
+        .dest_dir
+        .clone()
+        .unwrap_or_else(repos::default_download_dir);
+    let filename = item
+        .filename
+        .clone()
+        .unwrap_or_else(|| format!("youtube-{}.mp4", &id[..8]));
+    let final_path = dest_dir.join(&filename);
+    create_media_row(state, item, &id, &final_path).await;
+    finish_job_setup(state, &id, item, &filename).await;
+    let app2 = app.clone();
+    let state2 = Arc::clone(state);
+    let url = item.url.clone();
+    let job_path = final_path.clone();
+    let job_id = id.clone();
+    let ctx = swiftfetch_media::MediaContext {
+        cookies: item.cookies.clone(),
+        referer: item.referer.clone(),
+    };
+    tauri::async_runtime::spawn(async move {
+        let client = swiftfetch_net::HttpConfig::default().client();
+        let result = async {
+            let client = client.map_err(|e| ("E_MEDIA_PARSE".to_owned(), e.to_string()))?;
+            let solver = swiftfetch_sites_youtube::RuntimeSolver::new(client.clone());
+            let site = swiftfetch_sites_youtube::YoutubeSite::new(&client, &solver);
+            site.one_click(
+                &url,
+                &job_path,
+                prefer_height,
+                &ctx,
+                &tokio_util::sync::CancellationToken::new(),
+                |_| {},
+            )
+            .await
+            .map(|_| ())
+            .map_err(|e| (e.code().to_owned(), e.to_string()))
+        }
+        .await;
+        settle_media_job(&app2, &state2, &job_id, &url, &job_path, result).await;
+    });
+    Some(id)
+}
+
+fn emit_rejected(app: &tauri::AppHandle, item: &repos::StagedDownload, message: &str) {
+    tracing::warn!(url = %item.url, message, "staged download rejected");
+    use tauri::Emitter;
+    let _ = app.emit(
+        "download://event",
+        serde_json::json!({
+            "jobId": item.id, "kind": "staged-rejected",
+            "event": { "code": "E_STAGED_REJECTED", "message": message }
+        }),
+    );
 }
 
 async fn consume_commands(state: &Arc<AppState>) -> Result<(), String> {

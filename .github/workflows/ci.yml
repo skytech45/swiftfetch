@@ -39,6 +39,10 @@ jobs:
           npm ci
           npm run build
 
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
+
       - name: Format check
         run: cargo fmt --all -- --check
 

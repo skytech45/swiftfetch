@@ -38,12 +38,15 @@ async fn cli_stage_add_command_round_trip() {
     // ── 1. CLI side: stage a download (what `swiftfetch add` does).
     let staged_id = repos::stage_download(
         &repos_store,
-        &url,
-        Some(dir.path()),
-        None,
-        Some("main"),
-        true,
-        "cli",
+        &repos::StageRequest {
+            url,
+            dest_dir: Some(dir.path().to_path_buf()),
+            queue_id: Some("main".to_owned()),
+            start_paused: true,
+            source: "cli".to_owned(),
+            kind: "file".to_owned(),
+            ..repos::StageRequest::default()
+        },
     )
     .expect("stage");
 

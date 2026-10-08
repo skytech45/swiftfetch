@@ -46,6 +46,7 @@ sha2 = "0.10"
 swiftfetch-common = { path = "crates/common" }
 swiftfetch-engine = { path = "crates/engine" }
 swiftfetch-scheduler = { path = "crates/scheduler" }
+swiftfetch-media = { path = "crates/media" }
 swiftfetch-net = { path = "crates/net" }
 swiftfetch-sites-youtube = { path = "crates/sites/youtube" }
 swiftfetch-store = { path = "crates/store" }

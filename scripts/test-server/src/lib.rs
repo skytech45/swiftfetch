@@ -140,6 +140,8 @@ pub struct RequestLog {
     pub range: Option<String>,
     /// `If-Range` header value.
     pub if_range: Option<String>,
+    /// `Cookie` header value (M4: capture-with-cookies assertions).
+    pub cookie: Option<String>,
     /// Response status code.
     pub status: u16,
 }
@@ -269,12 +271,15 @@ async fn handle_connection(stream: TcpStream, shared: Arc<Shared>) -> std::io::R
             return Ok(());
         };
         let route_key = request.path.clone();
+        // Solved stream URLs carry query strings (`?sig=…`); routes are
+        // registered by path, so match on the path before the `?`.
+        let lookup_key = route_key.split('?').next().unwrap_or(&route_key).to_owned();
         let Some(state) = ({
             let routes = shared
                 .routes
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            routes.get(&route_key).cloned()
+            routes.get(&lookup_key).cloned()
         }) else {
             respond_simple(&mut conn, 404, b"not found").await?;
             continue;
@@ -284,6 +289,7 @@ async fn handle_connection(stream: TcpStream, shared: Arc<Shared>) -> std::io::R
             path: request.path.clone(),
             range: request.header("range").map(str::to_owned),
             if_range: request.header("if-range").map(str::to_owned),
+            cookie: request.header("cookie").map(str::to_owned),
             status: 0,
         };
         let status = respond(&mut conn, &request, &route, &state, shared.clone()).await?;
