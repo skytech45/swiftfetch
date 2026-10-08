@@ -5,6 +5,50 @@ Keep a Changelog; versions follow SemVer.
 
 ## [Unreleased]
 
+### Milestone 5 — Site grabber, mirrors, i18n, updater, packaging (2026-10-08)
+
+#### Added
+
+- **Site grabber** (`swiftfetch-grabber`): BFS spider from a seed URL with
+  max depth (default 2), page/file caps, include/exclude extension filters,
+  min/max size hints, stay-on-domain (default on), `robots.txt` compliance
+  (default on, UI warns when disabled) and a 1 s per-host politeness delay.
+  `scripts/test-server`-style fixture tests cover a 50-page site: private
+  paths excluded, depth + filters honored, politeness applied, and re-grabs
+  pick up newly added files. Desktop ships a "New site grabber project"
+  wizard (persisted projects, results sent to a queue); CLI gains
+  `swiftfetch grab <seed> [--depth N] [--max-pages N] [--include zip,pdf]`.
+- **Mirror URLs** (engine + store): `mirrors` table gains `bytes_ok` /
+  `last_error` (migration V5, also adding `grabber_projects`); typed repos
+  (`add_mirror`, `list_mirrors` in try-order, `record_mirror_result`,
+  `remove_mirror`, grabber-project CRUD); engine `mirrors` module
+  (`MirrorCandidate`, `order_mirrors`, `MirrorRefresher` — one attempt per
+  mirror, plugs into the URL-refresh path). Primary-fails-mid-download →
+  mirror completes with matching hash; per-download mirror manager in the
+  details dialog; CLI `mirror add/list`.
+- **i18n complete** (EN + HI): 126 keys in sync (missing `toast`/`queue`
+  Hindi backfilled plus new `grabber`/`mirrors`/`updater` sections),
+  plural-aware `tp()` via `Intl.PluralRules` (`filesFound_one/other` in
+  both languages), `docs/i18n-guide.md` (namespaces, fallback, plurals,
+  RTL rules, add-a-locale steps), `scripts/check-i18n.mjs` wired as
+  `npm run i18n:check` and a Node CI step (build fails on drift).
+- **Updater + packaging**: `tauri.conf.json` bundle targets
+  (NSIS both-install-modes / DMG 13.0+ / AppImage / MSI / deb), update
+  channel (`stable`/`beta`) + check-on-startup settings with a Settings UI
+  section; `get_update_status` reports `configured: false` until release
+  signing provisions the feed + pinned pubkey (updater config stays
+  `active: false` until then). Native-host install scripts
+  (`install-native-host.sh/.ps1`) register Chrome/Edge/Firefox manifests.
+- **Threat model** (`docs/threat-model.md`): reviewed for M5 — no secrets
+  in logs/DB (keychain refs only), origin-checked IPC, argv-only
+  subprocesses, polite spider defaults, pinned-key update supply chain.
+
+#### Tests
+
+- `m5_grabber` (2): robots/depth/filter/politeness + re-grab pickup.
+- `m5_mirrors` (2): failover completes with correct hash; stats recorded.
+- Store schema tests updated to v1..v5 (12 tables); full workspace green.
+
 ### Milestone 4 — Browser capture + media + YouTube one-click (2026-10-07)
 
 #### Added
