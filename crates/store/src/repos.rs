@@ -1124,3 +1124,196 @@ pub fn remove_mirror(store: &Store, job_id: &str, url: &str) -> Result<(), Store
         Ok(())
     })
 }
+
+// ── Checksum expectations (M6) ───────────────────────────────────────────
+
+/// Sets the expected SHA-256/MD5 hex for a download (user-pasted or
+/// sidecar-detected).
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn set_expected_hash(store: &Store, id: &str, hex: &str) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "UPDATE downloads SET expected_sha256 = ?2, checksum_state = 'unverified', \
+             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?1",
+            rusqlite::params![id, hex.to_ascii_lowercase()],
+        )?;
+        Ok(())
+    })
+}
+
+/// Records a checksum outcome (`verified` or `failed`).
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn set_checksum_state(store: &Store, id: &str, state: &str) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "UPDATE downloads SET checksum_state = ?2, \
+             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?1",
+            rusqlite::params![id, state],
+        )?;
+        Ok(())
+    })
+}
+
+/// A download row with its checksum expectation (for batch verify).
+#[derive(Debug, Clone)]
+pub struct ChecksumJob {
+    /// Job id.
+    pub id: String,
+    /// Final file path.
+    pub final_path: String,
+    /// Expected hex digest, if any.
+    pub expected_sha256: Option<String>,
+    /// `unverified|verified|failed`.
+    pub checksum_state: String,
+    /// Job state string.
+    pub state: String,
+}
+
+/// Lists completed downloads carrying a checksum expectation.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn list_checksum_jobs(store: &Store) -> Result<Vec<ChecksumJob>, StoreError> {
+    store.with_conn(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT id, final_path, expected_sha256, checksum_state, state FROM downloads \
+             WHERE state = 'done' AND expected_sha256 IS NOT NULL ORDER BY created_at",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(ChecksumJob {
+                    id: r.get(0)?,
+                    final_path: r.get(1)?,
+                    expected_sha256: r.get(2)?,
+                    checksum_state: r.get(3)?,
+                    state: r.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+}
+
+// ── Torrents (M6) ────────────────────────────────────────────────────────
+
+/// A `torrents` row.
+#[derive(Debug, Clone)]
+pub struct TorrentRow {
+    /// Torrent id (uuid v4).
+    pub id: String,
+    /// V1 info hash hex.
+    pub info_hash: String,
+    /// Source magnet link, if any.
+    pub magnet: Option<String>,
+    /// Display name.
+    pub name: String,
+    /// Output directory.
+    pub output_dir: String,
+    /// Queue id, if enqueued.
+    pub queue_id: Option<String>,
+    /// `downloading|paused|seeding|done|error`.
+    pub state: String,
+    /// Seed-to ratio (default 1.0).
+    pub seed_ratio: f64,
+    /// Error message, when errored.
+    pub error_msg: Option<String>,
+}
+
+/// Creates a torrent row.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+#[allow(clippy::too_many_arguments)]
+pub fn create_torrent(
+    store: &Store,
+    info_hash: &str,
+    magnet: Option<&str>,
+    name: &str,
+    output_dir: &str,
+    queue_id: Option<&str>,
+    seed_ratio: f64,
+) -> Result<String, StoreError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    store.with_conn(|conn| {
+        conn.execute(
+            "INSERT INTO torrents (id, info_hash, magnet, name, output_dir, queue_id, seed_ratio, \
+             created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, \
+             strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+            rusqlite::params![
+                id, info_hash, magnet, name, output_dir, queue_id, seed_ratio
+            ],
+        )?;
+        Ok(())
+    })?;
+    Ok(id)
+}
+
+/// Lists all torrent rows.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn list_torrents(store: &Store) -> Result<Vec<TorrentRow>, StoreError> {
+    store.with_conn(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT id, info_hash, magnet, name, output_dir, queue_id, state, seed_ratio, \
+             error_msg FROM torrents ORDER BY created_at",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(TorrentRow {
+                    id: r.get(0)?,
+                    info_hash: r.get(1)?,
+                    magnet: r.get(2)?,
+                    name: r.get(3)?,
+                    output_dir: r.get(4)?,
+                    queue_id: r.get(5)?,
+                    state: r.get(6)?,
+                    seed_ratio: r.get(7)?,
+                    error_msg: r.get(8)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+}
+
+/// Sets a torrent's state (and optional error).
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn set_torrent_state(
+    store: &Store,
+    id: &str,
+    state: &str,
+    error: Option<&str>,
+) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "UPDATE torrents SET state = ?2, error_msg = ?3 WHERE id = ?1",
+            rusqlite::params![id, state, error],
+        )?;
+        Ok(())
+    })
+}
+
+/// Deletes a torrent row.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn delete_torrent(store: &Store, id: &str) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute("DELETE FROM torrents WHERE id = ?1", rusqlite::params![id])?;
+        Ok(())
+    })
+}

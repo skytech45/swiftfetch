@@ -5,7 +5,7 @@
 
 use swiftfetch_store::Store;
 
-const EXPECTED_TABLES: [&str; 12] = [
+const EXPECTED_TABLES: [&str; 13] = [
     "categories",
     "cli_commands",
     "downloads",
@@ -18,6 +18,7 @@ const EXPECTED_TABLES: [&str; 12] = [
     "settings",
     "site_logins",
     "staged_downloads",
+    "torrents",
 ];
 
 fn temp_store() -> (tempfile::TempDir, Store) {
@@ -61,10 +62,7 @@ fn reopens_cleanly_with_migrations_applied_once() {
             })
         })
         .expect("count applied migrations");
-    assert_eq!(
-        applied, 5,
-        "schema v1..v5 must be applied exactly once"
-    );
+    assert_eq!(applied, 6, "schema v1..v6 must be applied exactly once");
 }
 
 #[test]

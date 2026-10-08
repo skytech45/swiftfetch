@@ -1,7 +1,8 @@
 //! Digest verification: streaming SHA-256/MD5 during download plus parsing of
 //! `Digest:` (RFC 3230) and `Content-MD5` headers.
 
-use std::path::Path;
+use std::io::Read as _;
+use std::path::{Path, PathBuf};
 
 use base64::Engine as _;
 use md5::Md5;
@@ -138,7 +139,6 @@ pub fn to_hex(bytes: &[u8]) -> String {
 ///
 /// Returns [`std::io::Error`] when the file cannot be read.
 pub fn sha256_file(path: &Path) -> std::io::Result<Digest> {
-    use std::io::Read;
     let mut file = std::fs::File::open(path)?;
     let mut hasher = StreamHasher::default();
     let mut buf = vec![0u8; 256 * 1024];
@@ -150,6 +150,78 @@ pub fn sha256_file(path: &Path) -> std::io::Result<Digest> {
         hasher.update(&buf[..n]);
     }
     Ok(hasher.finalize().0)
+}
+
+/// Verifies a file against an expected hex digest (SHA-256 or MD5).
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] when the file cannot be read; returns
+/// `Ok(false)` (not an error) when the hash simply does not match, or when
+/// `expected_hex` is not a valid 32/64-char hex digest.
+pub fn verify_expected(path: &Path, expected_hex: &str) -> std::io::Result<bool> {
+    let expected = expected_hex.trim().to_ascii_lowercase();
+    if expected.len() != 64 && expected.len() != 32 {
+        return Ok(false);
+    }
+    if !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Ok(false);
+    }
+    let actual = sha256_file(path)?;
+    if expected.len() == 64 {
+        return Ok(to_hex(actual.bytes()) == expected);
+    }
+    // MD5 expectation: compare against the streamed MD5.
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = StreamHasher::default();
+    let mut buf = vec![0u8; 256 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    let (_, md5) = hasher.finalize();
+    Ok(to_hex(md5.bytes()) == expected)
+}
+
+/// Looks for a `<stem>.sha256` / `<stem>.md5` sidecar next to `file_path`
+/// and parses `<hex> [*]<filename>` (coreutils format, first line).
+/// Returns the expected hex digest, if any.
+#[must_use]
+pub fn find_sidecar_hex(file_path: &Path) -> Option<String> {
+    let stem = file_path.file_name()?.to_str()?;
+    for ext in ["sha256", "md5"] {
+        let sidecar = file_path.with_file_name(format!("{stem}.{ext}"));
+        if let Ok(body) = std::fs::read_to_string(&sidecar)
+            && let Some(first) = body.lines().next()
+        {
+            let hex = first.split_whitespace().next().unwrap_or("").trim();
+            if (hex.len() == 64 || hex.len() == 32) && hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Some(hex.to_ascii_lowercase());
+            }
+        }
+    }
+    None
+}
+
+/// Renames `path` to `<name>.badhash` (appending a counter when taken)
+/// for checksum-mismatched files. Returns the new path.
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] when the rename fails.
+pub fn quarantine_badhash(path: &Path) -> std::io::Result<PathBuf> {
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+    let mut unique = path.with_file_name(format!("{file_name}.badhash"));
+    let mut i = 0u32;
+    while unique.exists() {
+        i += 1;
+        unique = path.with_file_name(format!("{file_name}.badhash.{i}"));
+    }
+    std::fs::rename(path, &unique)?;
+    Ok(unique)
 }
 
 #[cfg(test)]
