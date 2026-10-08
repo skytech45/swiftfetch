@@ -4,6 +4,8 @@
 //! the desktop app consumes staged downloads and control commands within
 //! about a second and acts through the live engine. Reads are plain WAL
 //! readers — they never block the app.
+//!
+//! Milestone 5 adds `grab` (site spider) and `mirror` management.
 
 use std::process::ExitCode;
 
@@ -36,7 +38,11 @@ fn usage() -> &'static str {
      \x20 cancel <id>                Cancel a download.\n\
      \x20 queues                     List queues.\n\
      \x20 start-queue <id|name>      Activate a queue.\n\
-     \x20 stop-queue <id|name>       Deactivate a queue.\n\n\
+     \x20 stop-queue <id|name>       Deactivate a queue.\n\
+     \x20 grab <seed> [--depth N] [--max-pages N] [--include zip,pdf]\n\
+     \x20     Crawl a site (robots.txt honored) and list found files.\n\
+     \x20 mirror add <id> <url>      Add a mirror URL to a download.\n\
+     \x20 mirror list <id>           List a download's mirrors.\n\n\
      Ids may be full UUIDs or unique prefixes (8+ chars)."
 }
 
@@ -55,6 +61,11 @@ fn run(args: &[String]) -> Result<(), String> {
         "queues" => cmd_queues(&store),
         "start-queue" => cmd_queue_active(&store, arg(args, 1, "start-queue <id>")?.as_str(), true),
         "stop-queue" => cmd_queue_active(&store, arg(args, 1, "stop-queue <id>")?.as_str(), false),
+        "grab" => cmd_grab(
+            arg(args, 1, "grab <seed>")?.as_str(),
+            &args[2.min(args.len())..],
+        ),
+        "mirror" => cmd_mirror(&store, &args[1.min(args.len())..]),
         "--help" | "-h" | "help" => {
             println!("{}", usage());
             Ok(())
@@ -242,6 +253,90 @@ fn cmd_queue_active(store: &Store, prefix: &str, active: bool) -> Result<(), Str
 
 fn short(id: &str) -> String {
     id.chars().take(8).collect()
+}
+
+/// Crawls a site and lists the downloadable files found (robots.txt is
+/// honored by default; pass `--no-robots` only for sites you own).
+fn cmd_grab(seed: &str, args: &[String]) -> Result<(), String> {
+    let mut config = swiftfetch_grabber::GrabConfig::new(seed);
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--depth" => {
+                i += 1;
+                let v = args.get(i).ok_or("missing value for --depth")?;
+                config.max_depth = v.parse::<u32>().map_err(|_| "bad --depth")?.min(5);
+            }
+            "--max-pages" => {
+                i += 1;
+                let v = args.get(i).ok_or("missing value for --max-pages")?;
+                config.max_pages = v.parse::<u32>().map_err(|_| "bad --max-pages")?;
+            }
+            "--include" => {
+                i += 1;
+                let v = args.get(i).ok_or("missing value for --include")?;
+                config.include_exts = v
+                    .split(',')
+                    .map(|s| s.trim().to_ascii_lowercase())
+                    .collect();
+            }
+            "--no-robots" => {
+                config.respect_robots = false;
+                eprintln!("warning: robots.txt disabled — only use on sites you own");
+            }
+            other => return Err(format!("unexpected argument: {other}")),
+        }
+        i += 1;
+    }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("cannot start runtime: {e}"))?;
+    let report = rt
+        .block_on(swiftfetch_grabber::crawl(config))
+        .map_err(|e| e.to_string())?;
+    println!(
+        "grabbed {} pages, {} files ({} robots-skipped)",
+        report.pages_visited,
+        report.files.len(),
+        report.skipped_robots
+    );
+    for file in &report.files {
+        println!("  {}  [{}]", file.url, file.extension);
+    }
+    Ok(())
+}
+
+/// Mirror management: `mirror add <id> <url>` / `mirror list <id>`.
+fn cmd_mirror(store: &Store, args: &[String]) -> Result<(), String> {
+    let sub = args.first().ok_or("missing argument: mirror <add|list>")?;
+    match sub.as_str() {
+        "add" => {
+            let id = resolve_job(store, args.get(1).ok_or("mirror add <id> <url>")?)?;
+            let url = args.get(2).ok_or("mirror add <id> <url>")?;
+            if !(url.starts_with("http://") || url.starts_with("https://")) {
+                return Err("mirror URL must be http(s)".into());
+            }
+            repos::add_mirror(store, &id, url, 0).map_err(|e| e.to_string())?;
+            println!("mirror added to {id}");
+            Ok(())
+        }
+        "list" => {
+            let id = resolve_job(store, args.get(1).ok_or("mirror list <id>")?)?;
+            let mirrors = repos::list_mirrors(store, &id).map_err(|e| e.to_string())?;
+            if mirrors.is_empty() {
+                println!("no mirrors for {id}");
+            }
+            for m in &mirrors {
+                println!(
+                    "prio={} fails={} bytes={}  {}",
+                    m.priority, m.fails, m.bytes_ok, m.url
+                );
+            }
+            Ok(())
+        }
+        other => Err(format!("unknown mirror subcommand: {other}")),
+    }
 }
 
 fn truncate(text: &str, max: usize) -> String {
