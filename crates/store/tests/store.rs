@@ -1,13 +1,15 @@
-//! Integration tests: WAL mode, schema v1 completeness, migration
+//! Integration tests: WAL mode, schema completeness, migration
 //! idempotence and foreign-key enforcement.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)] // tests may panic on failure
 
 use swiftfetch_store::Store;
 
-const EXPECTED_TABLES: [&str; 9] = [
+const EXPECTED_TABLES: [&str; 12] = [
     "categories",
+    "cli_commands",
     "downloads",
+    "grabber_projects",
     "history",
     "mirrors",
     "queue_items",
@@ -15,6 +17,7 @@ const EXPECTED_TABLES: [&str; 9] = [
     "segments",
     "settings",
     "site_logins",
+    "staged_downloads",
 ];
 
 fn temp_store() -> (tempfile::TempDir, Store) {
@@ -59,8 +62,8 @@ fn reopens_cleanly_with_migrations_applied_once() {
         })
         .expect("count applied migrations");
     assert_eq!(
-        applied, 4,
-        "schema v1+v2+v3+v4 must be applied exactly once"
+        applied, 5,
+        "schema v1..v5 must be applied exactly once"
     );
 }
 

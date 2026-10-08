@@ -913,3 +913,214 @@ pub fn insert_history(
         Ok(())
     })
 }
+
+// ── Mirror URLs (M5) ─────────────────────────────────────────────────────
+
+/// One mirror row: alternate URL + outcome counters for ordering.
+#[derive(Debug, Clone)]
+pub struct MirrorRow {
+    /// Mirror URL.
+    pub url: String,
+    /// Lower = tried first.
+    pub priority: i64,
+    /// Consecutive failure count (backoff signal).
+    pub fails: i64,
+    /// Bytes successfully fetched from this mirror.
+    pub bytes_ok: i64,
+    /// Last error message, if any.
+    pub last_error: Option<String>,
+}
+
+/// Adds (or keeps) a mirror URL for a job.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn add_mirror(store: &Store, job_id: &str, url: &str, priority: i64) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "INSERT INTO mirrors (job_id, url, priority) VALUES (?1, ?2, ?3) \
+             ON CONFLICT(job_id, url) DO UPDATE SET priority = excluded.priority",
+            rusqlite::params![job_id, url, priority],
+        )?;
+        Ok(())
+    })
+}
+
+/// Lists a job's mirrors ordered for trying: priority, then fewest fails,
+/// then most bytes delivered.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn list_mirrors(store: &Store, job_id: &str) -> Result<Vec<MirrorRow>, StoreError> {
+    store.with_conn(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT url, priority, fails, bytes_ok, last_error FROM mirrors \
+             WHERE job_id = ?1 ORDER BY priority ASC, fails ASC, bytes_ok DESC",
+        )?;
+        let rows = stmt
+            .query_map(rusqlite::params![job_id], |r| {
+                Ok(MirrorRow {
+                    url: r.get(0)?,
+                    priority: r.get(1)?,
+                    fails: r.get(2)?,
+                    bytes_ok: r.get(3)?,
+                    last_error: r.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+}
+
+/// Records a mirror outcome: success adds `bytes` to `bytes_ok` and clears
+/// the failure count; failure increments `fails` and stores the message.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn record_mirror_result(
+    store: &Store,
+    job_id: &str,
+    url: &str,
+    bytes: u64,
+    error: Option<&str>,
+) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        if let Some(msg) = error {
+            conn.execute(
+                "UPDATE mirrors SET fails = fails + 1, last_error = ?3 \
+                 WHERE job_id = ?1 AND url = ?2",
+                rusqlite::params![job_id, url, msg],
+            )?;
+        } else {
+            let bytes_clamped = i64::try_from(bytes).unwrap_or(i64::MAX);
+            conn.execute(
+                "UPDATE mirrors SET fails = 0, bytes_ok = bytes_ok + ?3, last_error = NULL \
+                 WHERE job_id = ?1 AND url = ?2",
+                rusqlite::params![job_id, url, bytes_clamped],
+            )?;
+        }
+        Ok(())
+    })
+}
+
+// ── Site-grabber projects (M5) ───────────────────────────────────────────
+
+/// A persisted spider project.
+#[derive(Debug, Clone)]
+pub struct GrabberProject {
+    /// Project id.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Seed URL.
+    pub seed_url: String,
+    /// Serialized [`swiftfetch_grabber_like`] config JSON (opaque to the store).
+    pub config_json: String,
+    /// Destination queue, if any.
+    pub queue_id: Option<String>,
+    /// Last run timestamp.
+    pub last_run_at: Option<String>,
+    /// Files found on the last run.
+    pub last_found: i64,
+}
+
+/// Creates a grabber project.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn create_grabber_project(
+    store: &Store,
+    name: &str,
+    seed_url: &str,
+    config_json: &str,
+    queue_id: Option<&str>,
+) -> Result<String, StoreError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    store.with_conn(|conn| {
+        conn.execute(
+            "INSERT INTO grabber_projects (id, name, seed_url, config_json, queue_id, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+            rusqlite::params![id, name, seed_url, config_json, queue_id],
+        )?;
+        Ok(())
+    })?;
+    Ok(id)
+}
+
+/// Lists all grabber projects.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn list_grabber_projects(store: &Store) -> Result<Vec<GrabberProject>, StoreError> {
+    store.with_conn(|conn| {
+        let mut stmt = conn.prepare(
+            "SELECT id, name, seed_url, config_json, queue_id, last_run_at, last_found \
+             FROM grabber_projects ORDER BY name",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(GrabberProject {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    seed_url: r.get(2)?,
+                    config_json: r.get(3)?,
+                    queue_id: r.get(4)?,
+                    last_run_at: r.get(5)?,
+                    last_found: r.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+}
+
+/// Records a grabber run outcome.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn record_grabber_run(store: &Store, id: &str, found: i64) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "UPDATE grabber_projects SET last_run_at = \
+             strftime('%Y-%m-%dT%H:%M:%SZ','now'), last_found = ?2 WHERE id = ?1",
+            rusqlite::params![id, found],
+        )?;
+        Ok(())
+    })
+}
+
+/// Deletes a grabber project.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn delete_grabber_project(store: &Store, id: &str) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "DELETE FROM grabber_projects WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    })
+}
+
+/// Removes one mirror URL from a job.
+///
+/// # Errors
+///
+/// Returns [`StoreError`] on SQL failure.
+pub fn remove_mirror(store: &Store, job_id: &str, url: &str) -> Result<(), StoreError> {
+    store.with_conn(|conn| {
+        conn.execute(
+            "DELETE FROM mirrors WHERE job_id = ?1 AND url = ?2",
+            rusqlite::params![job_id, url],
+        )?;
+        Ok(())
+    })
+}
