@@ -93,5 +93,70 @@
     "rangeMismatch": "सर्वर रेंज बेमेल",
     "noResume": "सर्वर द्वारा फिर-शुरू समर्थित नहीं",
     "generic": "डाउनलोड विफल"
+  },
+  "toast": {
+    "clipboard": "URL कॉपी हुआ — डाउनलोड के रूप में जोड़ें?",
+    "queueOpened": "शेड्यूल द्वारा कतार खोली गई",
+    "queueClosed": "शेड्यूल द्वारा कतार बंद की गई",
+    "quotaExhausted": "कोटा पूरा — विंडो रीसेट तक डाउनलोड रुके",
+    "quotaResumed": "कोटा विंडो रीसेट — डाउनलोड फिर शुरू",
+    "postAction": "कतार खाली: {action} 60 से. में",
+    "cancelPost": "रद्द करें"
+  },
+  "queue": {
+    "schedule": {
+      "title": "शेड्यूल",
+      "kind": "शेड्यूल",
+      "manual": "मैनुअल (कोई शेड्यूल नहीं)",
+      "startStop": "दैनिक विंडो",
+      "daily": "रोज़",
+      "periodic": "हर",
+      "once": "एक बार",
+      "from": "से",
+      "to": "तक",
+      "at": "बजे"
+    },
+    "postAction": "कतार खाली होने पर",
+    "postNone": "कुछ नहीं",
+    "postSleep": "स्लीप",
+    "postHibernate": "हाइबरनेट",
+    "postShutdown": "शट डाउन"
+  },
+  "grabber": {
+    "title": "नया साइट ग्रैबर प्रोजेक्ट",
+    "name": "प्रोजेक्ट का नाम",
+    "seedUrl": "शुरुआती URL",
+    "depth": "गहराई (अधिकतम 5)",
+    "maxPages": "अधिकतम पेज",
+    "includeExts": "केवल फ़ाइल प्रकार (कॉमा से अलग, खाली = सभी)",
+    "stayOnDomain": "इसी साइट पर रहें",
+    "respectRobots": "robots.txt का पालन करें (अनुशंसित)",
+    "disableRobotsWarn": "robots.txt बंद करने पर आप ब्लॉक हो सकते हैं। केवल अपनी साइटों के लिए बंद करें।",
+    "start": "ग्रैब शुरू करें",
+    "results": "मिली फ़ाइलें",
+    "filesFound": "{count} फ़ाइलें मिलीं",
+    "filesFound_one": "{count} फ़ाइल मिली",
+    "filesFound_other": "{count} फ़ाइलें मिलीं",
+    "sendToQueue": "कतार में भेजें",
+    "close": "बंद करें"
+  },
+  "mirrors": {
+    "title": "मिरर URL",
+    "add": "मिरर जोड़ें",
+    "urlPlaceholder": "https://mirror.example.com/file.zip",
+    "empty": "कोई मिरर नहीं — मुख्य URL उपयोग होगा।",
+    "remove": "हटाएं"
+  },
+  "updater": {
+    "title": "अपडेट",
+    "channel": "चैनल",
+    "stable": "स्थिर",
+    "beta": "बीटा",
+    "checkOnStartup": "स्टार्टअप पर अपडेट जांचें",
+    "check": "अभी जांचें",
+    "upToDate": "SwiftFetch अद्यतित है।",
+    "available": "संस्करण {version} उपलब्ध है।",
+    "install": "इंस्टॉल करके पुनः शुरू करें",
+    "disabled": "इस बिल्ड में ऑटो-अपडेट कॉन्फ़िगर नहीं है।"
   }
 }

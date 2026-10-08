@@ -13,6 +13,7 @@ import {
 } from "./jobs";
 import { saveTheme, useI18n, useTheme, type Theme } from "./i18n";
 import { AddUrlDialog } from "./components/AddUrlDialog";
+import { GrabberDialog } from "./components/GrabberDialog";
 import { ProgressDialog } from "./components/ProgressDialog";
 import { QueuePanel } from "./components/QueuePanel";
 import { SettingsDialog } from "./components/SettingsDialog";
@@ -47,6 +48,7 @@ export default function App() {
   const [addOpen, setAddOpen] = useState(false);
   const [addUrl, setAddUrl] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [grabberOpen, setGrabberOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [sortDesc, setSortDesc] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -313,6 +315,9 @@ export default function App() {
           {t("toolbar.pauseAll")}
         </button>
         <span className="spacer" />
+        <button type="button" onClick={() => setGrabberOpen(true)}>
+          {t("grabber.title")}
+        </button>
         <button type="button" onClick={() => setSettingsOpen(true)}>
           {t("toolbar.settings")}
         </button>
@@ -425,6 +430,7 @@ export default function App() {
       {settingsOpen && (
         <SettingsDialog onClose={() => setSettingsOpen(false)} />
       )}
+      {grabberOpen && <GrabberDialog onClose={() => setGrabberOpen(false)} />}
       {detailJob && (
         <ProgressDialog job={detailJob} onClose={() => setDetailId(null)} />
       )}

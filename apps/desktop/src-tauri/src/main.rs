@@ -58,6 +58,12 @@ fn main() {
                     "{\"hourlyLimit\":null,\"dailyLimit\":null}",
                 )?;
             }
+            if repos::get_setting(&store, "update.channel")?.is_none() {
+                repos::set_setting(&store, "update.channel", "\"stable\"")?;
+            }
+            if repos::get_setting(&store, "update.checkOnStartup")?.is_none() {
+                repos::set_setting(&store, "update.checkOnStartup", "true")?;
+            }
             // Default "Main" queue.
             if repos::list_queues(&store)?.is_empty() {
                 repos::create_queue(&store, "main", "Main", 2)?;
@@ -197,6 +203,14 @@ fn main() {
             commands::set_queue_schedule,
             commands::cancel_post_action,
             commands::get_quota_status,
+            commands::create_grabber_project,
+            commands::list_grabber_projects,
+            commands::run_grabber_project,
+            commands::delete_grabber_project,
+            commands::add_mirror,
+            commands::list_mirrors,
+            commands::remove_mirror,
+            commands::get_update_status,
         ])
         .run(tauri::generate_context!())
         .expect("SwiftFetch desktop runtime failed to start");

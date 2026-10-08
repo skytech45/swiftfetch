@@ -121,5 +121,42 @@
     "postSleep": "Sleep",
     "postHibernate": "Hibernate",
     "postShutdown": "Shut down"
+  },
+  "grabber": {
+    "title": "New site grabber project",
+    "name": "Project name",
+    "seedUrl": "Start URL",
+    "depth": "Depth (max 5)",
+    "maxPages": "Max pages",
+    "includeExts": "Only file types (comma-separated, empty = all)",
+    "stayOnDomain": "Stay on this site",
+    "respectRobots": "Respect robots.txt (recommended)",
+    "disableRobotsWarn": "Disabling robots.txt may get you blocked. Only disable for sites you own.",
+    "start": "Start grab",
+    "results": "Files found",
+    "filesFound": "{count} files found",
+    "filesFound_one": "{count} file found",
+    "filesFound_other": "{count} files found",
+    "sendToQueue": "Send to queue",
+    "close": "Close"
+  },
+  "mirrors": {
+    "title": "Mirror URLs",
+    "add": "Add mirror",
+    "urlPlaceholder": "https://mirror.example.com/file.zip",
+    "empty": "No mirrors — the primary URL is used.",
+    "remove": "Remove"
+  },
+  "updater": {
+    "title": "Updates",
+    "channel": "Channel",
+    "stable": "Stable",
+    "beta": "Beta",
+    "checkOnStartup": "Check for updates on startup",
+    "check": "Check now",
+    "upToDate": "SwiftFetch is up to date.",
+    "available": "Version {version} is available.",
+    "install": "Install and restart",
+    "disabled": "Auto-update is not configured in this build."
   }
 }

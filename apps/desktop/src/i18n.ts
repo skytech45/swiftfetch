@@ -23,6 +23,8 @@ export interface I18n {
   lang: Lang;
   setLang: (lang: Lang) => void;
   t: (path: string, vars?: Record<string, string | number>) => string;
+  /** Plural-aware lookup: `{path}_one` / `{path}_other` via `Intl.PluralRules`. */
+  tp: (path: string, count: number) => string;
 }
 
 export function useI18n(): I18n {
@@ -54,7 +56,22 @@ export function useI18n(): I18n {
     [lang],
   );
 
-  return { lang, setLang, t };
+  const tp = useCallback(
+    (path: string, count: number) => {
+      const category = new Intl.PluralRules(lang).select(count);
+      const suffixed = `${path}_${category}`;
+      const raw =
+        lookup(dicts[lang] as Dict, suffixed) ??
+        lookup(dicts.en as Dict, suffixed) ??
+        lookup(dicts[lang] as Dict, path) ??
+        lookup(dicts.en as Dict, path) ??
+        path;
+      return raw.replaceAll("{count}", String(count));
+    },
+    [lang],
+  );
+
+  return { lang, setLang, t, tp };
 }
 
 // ── Settings / theme ─────────────────────────────────────────────────────

@@ -9,6 +9,9 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const [hourlyMib, setHourlyMib] = useState<string>("");
   const [dailyMib, setDailyMib] = useState<string>("");
   const [clipboard, setClipboard] = useState(false);
+  const [channel, setChannel] = useState("stable");
+  const [checkStartup, setCheckStartup] = useState(true);
+  const [updateUnconfigured, setUpdateUnconfigured] = useState(false);
 
   useEffect(() => {
     invoke<string | null>("get_setting", { key: "speed.global_kbps" })
@@ -34,6 +37,15 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         if (v !== null) setClipboard(JSON.parse(v) as boolean);
       })
       .catch(() => {});
+    invoke<{ channel: string; checkOnStartup: boolean; configured: boolean; version: string }>(
+      "get_update_status",
+    )
+      .then((s) => {
+        setChannel(s.channel);
+        setCheckStartup(s.checkOnStartup);
+        setUpdateUnconfigured(!s.configured);
+      })
+      .catch(() => {});
   }, []);
 
   const save = async (): Promise<void> => {
@@ -52,6 +64,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
       value: JSON.stringify({ hourlyLimit: toBytes(hourlyMib), dailyLimit: toBytes(dailyMib) }),
     });
     await invoke("set_setting", { key: "clipboard.monitor", value: JSON.stringify(clipboard) });
+    await invoke("set_setting", { key: "update.channel", value: JSON.stringify(channel) });
+    await invoke("set_setting", {
+      key: "update.checkOnStartup",
+      value: JSON.stringify(checkStartup),
+    });
     await saveTheme(theme);
     // Theme applies immediately via useTheme's persisted read on next mount;
     // apply live here too.
@@ -119,6 +136,25 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <option value="dark">{t("settings.themeDark")}</option>
           </select>
         </label>
+        <fieldset className="quota-fields">
+          <legend>{t("updater.title")}</legend>
+          <label>
+            {t("updater.channel")}
+            <select value={channel} onChange={(e) => setChannel(e.target.value)}>
+              <option value="stable">{t("updater.stable")}</option>
+              <option value="beta">{t("updater.beta")}</option>
+            </select>
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={checkStartup}
+              onChange={(e) => setCheckStartup(e.target.checked)}
+            />
+            {t("updater.checkOnStartup")}
+          </label>
+          {updateUnconfigured && <p className="muted">{t("updater.disabled")}</p>}
+        </fieldset>
         <div className="actions">
           <button type="button" onClick={onClose}>
             {t("addUrl.cancel")}

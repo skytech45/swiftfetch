@@ -519,3 +519,217 @@ pub async fn get_quota_status(
         exhausted,
     })
 }
+
+// ── M5: site grabber, mirrors, updater ───────────────────────────────────
+
+/// UI-facing grabber project.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrabberProjectView {
+    pub id: String,
+    pub name: String,
+    pub seed_url: String,
+    pub queue_id: Option<String>,
+    pub last_found: i64,
+}
+
+/// Creates a site-grabber project (spider config persists for re-grabs).
+#[tauri::command]
+pub async fn create_grabber_project(
+    state: tauri::State<'_, Arc<AppState>>,
+    name: String,
+    seed_url: String,
+    config_json: String,
+    queue_id: Option<String>,
+) -> Result<String, String> {
+    if !seed_url.starts_with("http://") && !seed_url.starts_with("https://") {
+        return Err("seed URL must be http(s)".to_owned());
+    }
+    db(&state, move |s| {
+        repos::create_grabber_project(s, &name, &seed_url, &config_json, queue_id.as_deref())
+    })
+    .await
+}
+
+/// Lists site-grabber projects.
+#[tauri::command]
+pub async fn list_grabber_projects(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Vec<GrabberProjectView>, String> {
+    let rows = db(&state, repos::list_grabber_projects).await?;
+    Ok(rows
+        .into_iter()
+        .map(|p| GrabberProjectView {
+            id: p.id,
+            name: p.name,
+            seed_url: p.seed_url,
+            queue_id: p.queue_id,
+            last_found: p.last_found,
+        })
+        .collect())
+}
+
+/// Runs a grabber project: crawls the seed, inserts found files as paused
+/// downloads on the project's queue, and records the run.
+#[tauri::command]
+pub async fn run_grabber_project(
+    state: tauri::State<'_, Arc<AppState>>,
+    app: AppHandle,
+    project_id: String,
+) -> Result<i64, String> {
+    let project = db(&state, move |s| {
+        repos::list_grabber_projects(s).map(|v| v.into_iter().find(|p| p.id == project_id))
+    })
+    .await?
+    .ok_or_else(|| "grabber project not found".to_owned())?;
+
+    let mut config: swiftfetch_grabber::GrabConfig =
+        serde_json::from_str(&project.config_json).map_err(|e| format!("bad grab config: {e}"))?;
+    config.seed_url = project.seed_url.clone();
+    if config.politeness.is_zero() {
+        config.politeness = swiftfetch_grabber::DEFAULT_POLITENESS;
+    }
+    if config.timeout.is_zero() {
+        config.timeout = swiftfetch_grabber::DEFAULT_TIMEOUT;
+    }
+    if config.user_agent.is_empty() {
+        config.user_agent = "SwiftFetch-site-grabber/0.1".to_owned();
+    }
+    let report = swiftfetch_grabber::crawl(config)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let found: Vec<(String, String)> = report
+        .files
+        .iter()
+        .map(|f| {
+            let name = f
+                .url
+                .rsplit('/')
+                .next()
+                .unwrap_or("grabbed")
+                .split('?')
+                .next()
+                .unwrap_or("grabbed")
+                .to_owned();
+            (f.url.clone(), name)
+        })
+        .collect();
+    let count = found.len() as i64;
+    let queue_id = project.queue_id.clone();
+    let dest_base = repos::default_download_dir().to_string_lossy().into_owned();
+    db(&state, move |s| {
+        for (url, name) in &found {
+            let id = uuid::Uuid::new_v4().to_string();
+            let final_path = std::path::Path::new(&dest_base)
+                .join(name)
+                .to_string_lossy()
+                .into_owned();
+            repos::insert_download(s, &id, url, &final_path, None, queue_id.as_deref(), 8)?;
+            if let Some(q) = queue_id.as_deref() {
+                let _ = repos::enqueue(s, q, &id);
+            }
+        }
+        repos::record_grabber_run(s, &project.id, count)?;
+        Ok::<(), swiftfetch_store::StoreError>(())
+    })
+    .await?;
+    let _ = app.emit("queue://changed", "grabber");
+    Ok(count)
+}
+
+/// Deletes a grabber project.
+#[tauri::command]
+pub async fn delete_grabber_project(
+    state: tauri::State<'_, Arc<AppState>>,
+    project_id: String,
+) -> Result<(), String> {
+    db(&state, move |s| {
+        repos::delete_grabber_project(s, &project_id)
+    })
+    .await
+}
+
+/// UI-facing mirror row.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MirrorView {
+    pub url: String,
+    pub priority: i64,
+    pub fails: i64,
+    pub bytes_ok: i64,
+}
+
+/// Adds a mirror URL to a download.
+#[tauri::command]
+pub async fn add_mirror(
+    state: tauri::State<'_, Arc<AppState>>,
+    job_id: String,
+    url: String,
+) -> Result<(), String> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("mirror URL must be http(s)".to_owned());
+    }
+    db(&state, move |s| repos::add_mirror(s, &job_id, &url, 0)).await
+}
+
+/// Lists a download's mirrors in try-order.
+#[tauri::command]
+pub async fn list_mirrors(
+    state: tauri::State<'_, Arc<AppState>>,
+    job_id: String,
+) -> Result<Vec<MirrorView>, String> {
+    let rows = db(&state, move |s| repos::list_mirrors(s, &job_id)).await?;
+    Ok(rows
+        .into_iter()
+        .map(|m| MirrorView {
+            url: m.url,
+            priority: m.priority,
+            fails: m.fails,
+            bytes_ok: m.bytes_ok,
+        })
+        .collect())
+}
+
+/// Removes a mirror URL from a download.
+#[tauri::command]
+pub async fn remove_mirror(
+    state: tauri::State<'_, Arc<AppState>>,
+    job_id: String,
+    url: String,
+) -> Result<(), String> {
+    db(&state, move |s| repos::remove_mirror(s, &job_id, &url)).await
+}
+
+/// Update-channel status for the Settings UI.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateStatus {
+    pub channel: String,
+    pub check_on_startup: bool,
+    pub configured: bool,
+    pub version: String,
+}
+
+/// Reports the updater configuration. `configured` is false until release
+/// signing (M5) provisions the artifact feed + pinned public key — the UI
+/// shows the "not configured in this build" note in that case.
+#[tauri::command]
+pub async fn get_update_status(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<UpdateStatus, String> {
+    let channel = db(&state, |s| repos::get_setting(s, "update.channel"))
+        .await?
+        .and_then(|v| serde_json::from_str::<String>(&v).ok())
+        .unwrap_or_else(|| "stable".to_owned());
+    let check_on_startup = db(&state, |s| repos::get_setting(s, "update.checkOnStartup"))
+        .await?
+        .and_then(|v| serde_json::from_str::<bool>(&v).ok())
+        .unwrap_or(true);
+    Ok(UpdateStatus {
+        channel,
+        check_on_startup,
+        configured: false,
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+    })
+}

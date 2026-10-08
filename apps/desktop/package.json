@@ -8,7 +8,8 @@
     "dev": "vite",
     "preview": "vite preview",
     "tauri": "tauri",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "i18n:check": "node ../../scripts/check-i18n.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12",

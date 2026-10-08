@@ -11,11 +11,18 @@ export function ProgressDialog({
 }) {
   const { t } = useI18n();
   const [segments, setSegments] = useState<SegmentView[]>([]);
+  const [mirrors, setMirrors] = useState<{ url: string; priority: number; fails: number; bytesOk: number }[]>([]);
+  const [mirrorUrl, setMirrorUrl] = useState("");
 
   useEffect(() => {
     const load = (): void => {
       invoke<SegmentView[]>("job_segments", { id: job.id })
         .then(setSegments)
+        .catch(() => {});
+      invoke<{ url: string; priority: number; fails: number; bytesOk: number }[]>("list_mirrors", {
+        jobId: job.id,
+      })
+        .then(setMirrors)
         .catch(() => {});
     };
     load();
@@ -61,6 +68,49 @@ export function ProgressDialog({
         <div className="actions">
           <button type="button" className="primary" onClick={onClose}>
             {t("progress.close")}
+          </button>
+        </div>
+        <h3>{t("mirrors.title")}</h3>
+        {mirrors.length === 0 ? (
+          <p className="muted small">{t("mirrors.empty")}</p>
+        ) : (
+          <ul className="mirrors">
+            {mirrors.map((m) => (
+              <li key={m.url}>
+                <span className="muted small">{m.url}</span>
+                <button
+                  type="button"
+                  aria-label={t("mirrors.remove")}
+                  onClick={() => {
+                    void invoke("remove_mirror", { jobId: job.id, url: m.url }).then(() =>
+                      setMirrors((cur) => cur.filter((x) => x.url !== m.url)),
+                    );
+                  }}
+                >
+                  {t("mirrors.remove")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="row">
+          <input
+            value={mirrorUrl}
+            onChange={(e) => setMirrorUrl(e.target.value)}
+            placeholder={t("mirrors.urlPlaceholder")}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const url = mirrorUrl.trim();
+              if (url.length === 0) return;
+              void invoke("add_mirror", { jobId: job.id, url }).then(() => {
+                setMirrors((cur) => [...cur, { url, priority: 0, fails: 0, bytesOk: 0 }]);
+                setMirrorUrl("");
+              });
+            }}
+          >
+            {t("mirrors.add")}
           </button>
         </div>
       </div>
