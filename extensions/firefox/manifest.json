@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "SwiftFetch",
+  "version": "1.0.0",
+  "description": "Capture downloads and YouTube videos with SwiftFetch.",
+  "permissions": [
+    "nativeMessaging",
+    "contextMenus",
+    "scripting",
+    "cookies"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.youtube.com/watch*",
+        "*://m.youtube.com/watch*"
+      ],
+      "js": [
+        "youtube.js"
+      ],
+      "css": [
+        "youtube.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "SwiftFetch"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "swiftfetch@skytech45"
+    }
+  }
+}
