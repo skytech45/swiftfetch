@@ -8,3 +8,15 @@ authors.workspace = true
 
 [lints]
 workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+bytes.workspace = true
+librqbit = "9.0.1"
+sha1 = "0.11.0"
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
