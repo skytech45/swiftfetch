@@ -14,6 +14,7 @@ dirs = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 swiftfetch-engine = { workspace = true }
+swiftfetch-auth = { path = "../../../crates/auth" }
 swiftfetch-grabber = { path = "../../../crates/grabber" }
 swiftfetch-torrent = { path = "../../../crates/torrent" }
 opener = "0.8"

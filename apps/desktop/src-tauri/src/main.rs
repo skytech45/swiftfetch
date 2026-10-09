@@ -7,6 +7,7 @@
 //! clipboard monitor and the AV scan hook.
 //! Milestones 2–3 of the build contract.
 
+mod auth;
 mod automation;
 mod commands;
 mod preview;
@@ -216,6 +217,10 @@ fn main() {
             commands::list_mirrors,
             commands::remove_mirror,
             commands::get_update_status,
+            auth::auth_session,
+            auth::auth_signup,
+            auth::auth_signin,
+            auth::auth_signout,
             torrents::torrent_add,
             torrents::torrent_list,
             torrents::torrent_pause,
