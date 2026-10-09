@@ -34,6 +34,18 @@ pub const HOST_ID: &str = "com.swiftfetch.host";
 /// Largest allowed frame (8 MiB, per the protocol contract).
 pub const MAX_FRAME: u32 = 8 * 1024 * 1024;
 
+/// Extension origins allowed to talk to the host. The browser enforces the
+/// manifest allowlist at spawn time (primary gate); messages arriving over
+/// an already-spawned pipe carry no `origin` and are trusted. Defense in
+/// depth: any message that *does* carry an `origin` must match this list
+/// or the host replies `E_ORIGIN_DENIED` (see `--print-manifest`, which
+/// emits the same values for installers).
+pub const ALLOWED_ORIGINS: &[&str] = &[
+    "chrome-extension://ofinmfgldbecdccimfgknfhjekcioclb/",
+    "chrome-extension://swiftfetch-edge@skytech45/",
+    "swiftfetch@skytech45",
+];
+
 /// What a running host session tracks per watched capture.
 struct Watch {
     staged_id: String,
@@ -41,16 +53,33 @@ struct Watch {
     last_done: i64,
 }
 
-/// Serves one browser connection until EOF or `shutdown`.
+/// Serves one browser connection until EOF or `shutdown`. Origins gate on
+/// [`ALLOWED_ORIGINS`]; see [`serve_with_origins`] for custom lists (tests).
 ///
 /// # Errors
 ///
 /// I/O and framing errors bubble up after a best-effort error frame.
 pub async fn serve(
     store: Arc<std::sync::Mutex<swiftfetch_store::Store>>,
+    input: impl AsyncRead + Unpin,
+    output: impl AsyncWrite + Unpin,
+    shutdown: CancellationToken,
+) -> std::io::Result<()> {
+    serve_with_origins(store, input, output, shutdown, ALLOWED_ORIGINS).await
+}
+
+/// Serves one browser connection, gating `origin`-carrying messages on
+/// `allowed_origins`.
+///
+/// # Errors
+///
+/// I/O and framing errors bubble up after a best-effort error frame.
+pub async fn serve_with_origins(
+    store: Arc<std::sync::Mutex<swiftfetch_store::Store>>,
     mut input: impl AsyncRead + Unpin,
     mut output: impl AsyncWrite + Unpin,
     shutdown: CancellationToken,
+    allowed_origins: &[&str],
 ) -> std::io::Result<()> {
     let mut watches: Vec<Watch> = Vec::new();
     let mut req_seq: u64 = 0;
@@ -94,7 +123,8 @@ pub async fn serve(
                     Ok(None) => return Ok(()), // browser closed the port
                     Ok(Some(text)) => {
                         req_seq += 1;
-                        let reply = handle_message(&store, &text, &mut watches).await;
+                        let reply =
+                            handle_message(&store, &text, &mut watches, allowed_origins).await;
                         let reply = reply.unwrap_or_else(|err| {
                             json!({"ok": false, "error": err})
                         });
@@ -119,8 +149,14 @@ async fn handle_message(
     store: &Arc<std::sync::Mutex<swiftfetch_store::Store>>,
     text: &str,
     watches: &mut Vec<Watch>,
+    allowed_origins: &[&str],
 ) -> Result<Value, String> {
     let msg: Value = serde_json::from_str(text).map_err(|err| format!("bad JSON: {err}"))?;
+    if let Some(origin) = msg.get("origin").and_then(Value::as_str)
+        && !allowed_origins.contains(&origin)
+    {
+        return Err(format!("E_ORIGIN_DENIED: {origin}"));
+    }
     match msg.get("type").and_then(Value::as_str) {
         Some("ping") => Ok(json!({
             "ok": true,

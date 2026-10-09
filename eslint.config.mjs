@@ -25,6 +25,12 @@ export default tseslint.config(
       globals: {
         ...globals.browser,
         ...globals.webextensions,
+        // Service workers (MV3) run in a worker scope.
+        ...globals.worker,
+        // Shared sources are UMD (classic script in browsers, CJS under
+        // vitest), so CJS/AMD names are legal here.
+        ...globals.node,
+        ...globals.amd,
       },
     },
   },

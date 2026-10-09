@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font: 13px system-ui, sans-serif; margin: 0; min-width: 320px; max-width: 420px; }
+      header { padding: 8px 12px; font-weight: 600; border-bottom: 1px solid #ddd; }
+      section { padding: 8px 12px; }
+      ul { list-style: none; margin: 0; padding: 0; }
+      li { display: flex; gap: 8px; align-items: center; padding: 4px 0; }
+      li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+      .muted { color: #666; }
+      button.send { margin: 8px 12px 12px; }
+    </style>
+  </head>
+  <body>
+    <header>SwiftFetch</header>
+    <section id="state" class="muted">Loading…</section>
+    <section id="videos" hidden>
+      <ul id="video-list"></ul>
+    </section>
+    <section id="links" hidden>
+      <label><input type="checkbox" id="toggle-all" checked /> Select all</label>
+      <ul id="link-list"></ul>
+      <button class="send" id="send">Send selected to SwiftFetch</button>
+    </section>
+    <script src="sniff.js"></script>
+    <script src="popup.js"></script>
+    <script src="popup-ui.js"></script>
+  </body>
+</html>

@@ -5,6 +5,34 @@ Keep a Changelog; versions follow SemVer.
 
 ## [Unreleased]
 
+### M4 test follow-up — extension, native-host, media suites (2026-10-08)
+
+Closes the Build Prompt §17 testing gaps left open when M4 shipped:
+
+- **Extensions** (`extensions/shared`, tested with vitest — 28 tests):
+  new single-source-of-truth core (`sniff.js`: media regexes, HLS/DASH
+  classification with the YouTube one-click exclusion, attachment/binary/
+  size interception policy, download-all link filtering; `popup.js`:
+  checkbox list model, selection, videos-beats-links panel state) synced
+  into `chrome/` + `firefox/` by `scripts/sync-extensions.mjs` (a sync
+  test fails the suite on drift). Backgrounds now sniff media traffic
+  into per-tab "videos found" lists, serve `list-videos` /
+  `send-links` / `download-all`, and intercept large/binary downloads;
+  new popup (`popup.html` + `popup-ui.js`, model from `popup.js`).
+  Manifests gain `webRequest` + `downloads` permissions and the popup
+  action. One test caught a real bug: the 50-entry cap dropped the
+  newest videos — the list now fills newest-first.
+- **Native host** (`crates/native-host/tests/m4_native_host.rs`, 4
+  tests + 3 framing unit tests): `serve` driven over in-memory pipes —
+  ping handshake, `add-download` staging with cookies/referer preserved,
+  HLS kind classification, `watch`/`status`, malformed input failing
+  cleanly — plus a new origin gate (`E_ORIGIN_DENIED` for non-allowlisted
+  `origin`, allowlist shared with `--print-manifest`).
+- **Media**: `m4_media` re-verified green locally (ffmpeg 9 winget) —
+  HLS AES-128 capture + remux, DASH merge, DRM abort.
+- CI node job now runs the vitest suite; `extensions` joined the npm
+  workspaces; eslint covers the UMD sources.
+
 ### Milestone 6 — BitTorrent, checksums, plugins, hardening (2026-10-08)
 
 #### Added

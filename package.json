@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "description": "SwiftFetch — IDM-class cross-platform download manager (monorepo root)",
   "workspaces": [
-    "apps/desktop"
+    "apps/desktop",
+    "extensions"
   ],
   "scripts": {
     "build": "npm run build --workspace @swiftfetch/desktop",

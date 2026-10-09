@@ -1,0 +1,14 @@
+{
+  "name": "@swiftfetch/extensions",
+  "private": true,
+  "version": "1.0.0",
+  "description": "SwiftFetch browser extensions (shared core + chrome/firefox packages)",
+  "type": "commonjs",
+  "scripts": {
+    "test": "vitest run",
+    "sync": "node ../scripts/sync-extensions.mjs"
+  },
+  "devDependencies": {
+    "vitest": "^3.2"
+  }
+}

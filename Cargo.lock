@@ -5319,6 +5319,7 @@ dependencies = [
  "swiftfetch-net",
  "swiftfetch-sites-youtube",
  "swiftfetch-store",
+ "tempfile",
  "tokio",
  "tokio-util",
  "tracing",

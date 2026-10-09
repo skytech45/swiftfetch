@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Capture downloads and YouTube videos with SwiftFetch.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApinnedKeyPlaceholderReplaceOnReleaseKey",
-  "permissions": ["nativeMessaging", "contextMenus", "scripting", "cookies"],
+  "permissions": ["nativeMessaging", "contextMenus", "scripting", "cookies", "webRequest", "downloads"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
@@ -15,5 +15,5 @@
       "run_at": "document_idle"
     }
   ],
-  "action": { "default_title": "SwiftFetch" }
+  "action": { "default_title": "SwiftFetch", "default_popup": "popup.html" }
 }

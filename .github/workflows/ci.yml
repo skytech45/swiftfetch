@@ -87,5 +87,8 @@ jobs:
       - name: i18n missing-key check
         run: npm run i18n:check --workspace @swiftfetch/desktop
 
+      - name: Extension tests (vitest)
+        run: npm test --workspace @swiftfetch/extensions
+
       - name: Build
         run: npm run build
