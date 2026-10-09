@@ -15,6 +15,7 @@ mod preview;
 mod queue;
 mod state;
 mod torrents;
+mod update;
 
 use std::sync::Arc;
 
@@ -237,6 +238,8 @@ fn main() {
             torrents::preview_start,
             torrents::preview_open,
             torrents::preview_stop,
+            update::check_for_updates,
+            update::get_remote_config,
         ])
         .run(tauri::generate_context!())
         .expect("SwiftFetch desktop runtime failed to start");
