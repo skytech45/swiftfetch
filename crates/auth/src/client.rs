@@ -227,6 +227,53 @@ impl AuthClient {
             .await;
     }
 
+    /// Ensures the caller's `app_users` row exists (idempotent insert,
+    /// first writer wins). Called after every sign-up/sign-in so a missing
+    /// or failed server trigger can never leave the account unprovisioned.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthError::Transport`] on network failure. Row-level denials are
+    /// returned as [`AuthError::Rejected`].
+    pub async fn provision_profile(
+        &self,
+        tokens: &AuthTokens,
+        display_name: Option<&str>,
+    ) -> Result<(), AuthError> {
+        let url = format!("{}/rest/v1/app_users?on_conflict=id", self.config.url);
+        let name = display_name
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .unwrap_or(&tokens.email);
+        let response = self
+            .http
+            .post(&url)
+            .header("apikey", &self.config.anon_key)
+            .header("Content-Type", "application/json")
+            .header("Prefer", "resolution=ignore-duplicates")
+            .bearer_auth(&tokens.access_token)
+            .body(json_body(&serde_json::json!({
+                "id": tokens.user_id,
+                "email": tokens.email,
+                "display_name": name,
+            }))?)
+            .send()
+            .await
+            .map_err(|e| AuthError::Transport(e.to_string()))?;
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(AuthError::Expired);
+        }
+        if !response.status().is_success() {
+            let message = read_json(response)
+                .await
+                .ok()
+                .and_then(|v| v.get("message").and_then(|m| m.as_str()).map(str::to_owned))
+                .unwrap_or_else(|| "profile provisioning failed".to_owned());
+            return Err(AuthError::Rejected(message));
+        }
+        Ok(())
+    }
+
     /// Reads the caller's `app_users` row (tier + status). Suspended users
     /// are reported (not errored) so the UI can show the reason.
     ///

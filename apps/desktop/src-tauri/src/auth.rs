@@ -80,8 +80,17 @@ async fn live_view(mut tokens: AuthTokens) -> Result<AuthView, String> {
 }
 
 /// Signs in (or registers) and binds this PC. Shared by signup + signin.
-async fn authenticate(state: &Arc<AppState>, tokens: AuthTokens) -> Result<AuthView, String> {
+async fn authenticate(
+    state: &Arc<AppState>,
+    tokens: AuthTokens,
+    display_name: Option<&str>,
+) -> Result<AuthView, String> {
     let api = client();
+    // Idempotent self-provisioning: guarantees the app_users row even if
+    // the server trigger ever misfires.
+    api.provision_profile(&tokens, display_name)
+        .await
+        .map_err(|e| e.to_string())?;
     let profile = api.profile(&tokens).await.map_err(|e| e.to_string())?;
     if profile.status == "suspended" {
         return Err("this account is suspended — contact support".to_owned());
@@ -143,7 +152,7 @@ pub async fn auth_signup(
         .signup(name.trim(), &email, &password)
         .await
         .map_err(|e| e.to_string())?;
-    authenticate(&state, tokens).await
+    authenticate(&state, tokens, Some(name.trim())).await
 }
 
 /// Signs in and binds this PC.
@@ -157,7 +166,7 @@ pub async fn auth_signin(
         .signin(&email, &password)
         .await
         .map_err(|e| e.to_string())?;
-    authenticate(&state, tokens).await
+    authenticate(&state, tokens, None).await
 }
 
 /// Signs out (revokes server-side, clears the keychain).
