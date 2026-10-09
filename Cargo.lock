@@ -5275,6 +5275,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "winreg",
 ]
 
 [[package]]

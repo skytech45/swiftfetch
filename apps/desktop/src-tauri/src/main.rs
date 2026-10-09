@@ -9,6 +9,7 @@
 
 mod auth;
 mod automation;
+mod browser;
 mod commands;
 mod preview;
 mod queue;
@@ -117,6 +118,9 @@ fn main() {
             });
             app.manage(app_state.clone());
 
+            // First-run browser integration (native host + sideload entries).
+            browser::integrate_if_needed(app.handle(), &app_state);
+
             // Queue runner needs the app handle for events + notifications.
             queue::spawn(app.handle().clone(), app_state.clone());
             // M3 automation: scheduler timer, CLI bridge, clipboard monitor.
@@ -221,6 +225,7 @@ fn main() {
             auth::auth_signup,
             auth::auth_signin,
             auth::auth_signout,
+            browser::integrate_browsers,
             torrents::torrent_add,
             torrents::torrent_list,
             torrents::torrent_pause,
