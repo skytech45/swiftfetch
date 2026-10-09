@@ -156,12 +156,21 @@ impl AuthClient {
     ///
     /// [`AuthError::Rejected`] on invalid input or an existing account;
     /// [`AuthError::Transport`] on network failure.
-    pub async fn signup(&self, email: &str, password: &str) -> Result<AuthTokens, AuthError> {
+    pub async fn signup(
+        &self,
+        name: &str,
+        email: &str,
+        password: &str,
+    ) -> Result<AuthTokens, AuthError> {
         let url = format!("{}/auth/v1/signup", self.config.url);
         let response = self
             .post(
                 &url,
-                &serde_json::json!({"email": email, "password": password}),
+                &serde_json::json!({
+                    "email": email,
+                    "password": password,
+                    "data": {"display_name": name},
+                }),
             )?
             .send()
             .await

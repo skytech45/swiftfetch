@@ -129,14 +129,18 @@ pub async fn auth_session() -> Result<Option<AuthView>, String> {
 #[tauri::command]
 pub async fn auth_signup(
     state: tauri::State<'_, Arc<AppState>>,
+    name: String,
     email: String,
     password: String,
 ) -> Result<AuthView, String> {
+    if name.trim().is_empty() {
+        return Err("please enter your name".to_owned());
+    }
     if password.len() < 8 {
         return Err("password must be at least 8 characters".to_owned());
     }
     let tokens = client()
-        .signup(&email, &password)
+        .signup(name.trim(), &email, &password)
         .await
         .map_err(|e| e.to_string())?;
     authenticate(&state, tokens).await
