@@ -5,7 +5,9 @@
 use std::sync::Arc;
 
 use serde::Serialize;
-use swiftfetch_auth::{AuthClient, AuthTokens, KeyringStore, SessionStore, default_config};
+use swiftfetch_auth::{
+    AuthClient, AuthError, AuthTokens, KeyringStore, SessionStore, default_config,
+};
 use swiftfetch_store::repos;
 
 use crate::state::AppState;
@@ -18,6 +20,8 @@ pub struct AuthView {
     pub email: String,
     /// `free` or `pro`.
     pub tier: String,
+    /// Trial expiry (ISO-8601), if any.
+    pub trial_ends_at: Option<String>,
 }
 
 fn client() -> AuthClient {
@@ -76,6 +80,7 @@ async fn live_view(mut tokens: AuthTokens) -> Result<AuthView, String> {
     Ok(AuthView {
         email: tokens.email.clone(),
         tier: profile.tier,
+        trial_ends_at: profile.trial_ends_at,
     })
 }
 
@@ -115,6 +120,7 @@ async fn authenticate(
     Ok(AuthView {
         email: tokens.email.clone(),
         tier: profile.tier,
+        trial_ends_at: profile.trial_ends_at,
     })
 }
 
@@ -176,4 +182,17 @@ pub async fn auth_signout() -> Result<(), String> {
         client().signout(&tokens.access_token).await;
     }
     store().clear().map_err(|e| format!("keychain: {e}"))
+}
+
+/// Activates a Pro license key for the signed-in account.
+#[tauri::command]
+pub async fn activate_license(key: String) -> Result<AuthView, String> {
+    let Some(tokens) = store().load().map_err(|e| format!("keychain: {e}"))? else {
+        return Err(AuthError::SignedOut.to_string());
+    };
+    let api = client();
+    api.activate_license(&tokens, &key)
+        .await
+        .map_err(|e| e.to_string())?;
+    live_view(tokens).await
 }

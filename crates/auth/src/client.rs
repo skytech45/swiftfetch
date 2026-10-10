@@ -71,6 +71,8 @@ pub struct UserProfile {
     pub tier: String,
     /// `active` or `suspended`.
     pub status: String,
+    /// Trial expiry (ISO-8601), if any.
+    pub trial_ends_at: Option<String>,
 }
 
 /// Outcome of `register_device`.
@@ -283,7 +285,7 @@ impl AuthClient {
     /// when the row is missing (auth user without a provisioned profile).
     pub async fn profile(&self, tokens: &AuthTokens) -> Result<UserProfile, AuthError> {
         let url = format!(
-            "{}/rest/v1/app_users?id=eq.{}&select=tier,status",
+            "{}/rest/v1/app_users?id=eq.{}&select=tier,status,trial_ends_at",
             self.config.url, tokens.user_id
         );
         let response = self
@@ -314,7 +316,50 @@ impl AuthClient {
                 .and_then(|v| v.as_str())
                 .unwrap_or("active")
                 .to_owned(),
+            trial_ends_at: row
+                .get("trial_ends_at")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned),
         })
+    }
+
+    /// Activates a Pro license key (`activate_license` RPC validates,
+    /// binds and upgrades server-side).
+    ///
+    /// # Errors
+    ///
+    /// [`AuthError::Rejected`] with `invalid_key` / `revoked` / `expired` /
+    /// `already_claimed`; [`AuthError::Transport`] on network failure.
+    pub async fn activate_license(&self, tokens: &AuthTokens, key: &str) -> Result<(), AuthError> {
+        let url = format!("{}/rest/v1/rpc/activate_license", self.config.url);
+        let response = self
+            .post(&url, &serde_json::json!({"p_key": key.trim()}))?
+            .bearer_auth(&tokens.access_token)
+            .send()
+            .await
+            .map_err(|e| AuthError::Transport(e.to_string()))?;
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(AuthError::Expired);
+        }
+        let body = read_json(response).await?;
+        if body
+            .get("ok")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
+        let reason = body
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .unwrap_or("rejected");
+        Err(AuthError::Rejected(match reason {
+            "invalid_key" => "unknown license key".to_owned(),
+            "revoked" => "this license was revoked".to_owned(),
+            "expired" => "this license expired".to_owned(),
+            "already_claimed" => "this key is already used on another account".to_owned(),
+            other => format!("activation refused: {other}"),
+        }))
     }
 
     /// Registers this PC (`register_device` RPC enforces the 3-PC cap and
