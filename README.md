@@ -79,7 +79,7 @@ Dual-licensed under [MIT](LICENSE) OR [Apache-2.0](LICENSE-APACHE).
 
 Dependency licenses are allowlisted (MIT / Apache-2.0 / BSD / ISC and
 similar permissive licenses only — no GPL in the core); `deny.toml`
-enforces this via `cargo deny check`. The `ffmpeg` sidecar binary is
-bundled per platform under its own license (LGPL/GPL depending on the
-build — see the ffmpeg distribution notes); it ships as a separate
-executable, never linked into SwiftFetch.
+enforces this via `cargo deny check`. The `ffmpeg` sidecar is a separate
+GPLv3 binary (Gyan essentials build, Windows x64) fetched on first media
+use with SHA-256 verification — never bundled, never linked, invoked only
+as its own process via argv arrays.

@@ -1,6 +1,6 @@
 [package]
 name = "swiftfetch-net"
-description = "SwiftFetch networking: proxy (HTTP/SOCKS/PAC), auth (NTLM/Kerberos via system SSP), cookies, TLS"
+description = "SwiftFetch networking: proxy (system/manual/PAC-lite, Basic auth), cookies, TLS"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,3 +11,6 @@ workspace = true
 
 [dependencies]
 reqwest = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"

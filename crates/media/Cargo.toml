@@ -9,12 +9,15 @@ authors.workspace = true
 [dependencies]
 aes = "0.8"
 cbc = { version = "0.1", features = ["std"] }
+dirs = { workspace = true }
 futures-util = { workspace = true }
 reqwest = { workspace = true }
+sha2.workspace = true
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["process", "fs"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

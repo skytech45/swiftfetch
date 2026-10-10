@@ -6,6 +6,7 @@
 //! `SAMPLE-AES`/session keys in HLS or `ContentProtection` in DASH) abort
 //! with [`MediaError::Drm`]: no CDM, no license-server calls, ever.
 
+pub mod bootstrap;
 pub mod dash;
 pub mod ffmpeg;
 pub mod hls;
@@ -17,6 +18,7 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
+pub use bootstrap::{PINNED_SHA256, PINNED_URL, PINNED_VERSION, ensure_ffmpeg};
 pub use dash::{DashManifest, Representation};
 pub use ffmpeg::Ffmpeg;
 pub use hls::{MasterVariant, MediaPlaylist};
@@ -329,7 +331,7 @@ pub async fn capture(
     cancel: &CancellationToken,
     mut on_event: impl FnMut(MediaEvent),
 ) -> Result<(), MediaError> {
-    let ffmpeg = Ffmpeg::locate()?;
+    let ffmpeg = Ffmpeg::from_exe(crate::ensure_ffmpeg().await?);
     let stage_dir = out
         .parent()
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf)

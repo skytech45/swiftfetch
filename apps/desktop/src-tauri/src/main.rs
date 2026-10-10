@@ -39,6 +39,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let store = swiftfetch_store::Store::open_default()?;
             // Engine gets its own journal connection; UI repos use a second
@@ -69,6 +70,9 @@ fn main() {
             if repos::get_setting(&store, "update.checkOnStartup")?.is_none() {
                 repos::set_setting(&store, "update.checkOnStartup", "true")?;
             }
+            if repos::get_setting(&store, "proxy.mode")?.is_none() {
+                repos::set_setting(&store, "proxy.mode", "\"system\"")?;
+            }
             // Default "Main" queue.
             if repos::list_queues(&store)?.is_empty() {
                 repos::create_queue(&store, "main", "Main", 2)?;
@@ -79,6 +83,7 @@ fn main() {
                 .and_then(|v| serde_json::from_str(&v).unwrap_or(None));
             let engine_config = swiftfetch_engine::EngineConfig {
                 global_speed_limit_kib: global_kbps,
+                net: proxy_config_from_store(&store),
                 ..swiftfetch_engine::EngineConfig::default()
             };
             let repos_store = swiftfetch_store::Store::open_default()?;
@@ -222,10 +227,14 @@ fn main() {
             commands::list_mirrors,
             commands::remove_mirror,
             commands::get_update_status,
+            commands::get_proxy_config,
+            commands::set_proxy_config,
+            commands::set_proxy_password,
             auth::auth_session,
             auth::auth_signup,
             auth::auth_signin,
             auth::auth_signout,
+            auth::activate_license,
             browser::integrate_browsers,
             torrents::torrent_add,
             torrents::torrent_list,
@@ -243,6 +252,58 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("SwiftFetch desktop runtime failed to start");
+}
+
+/// Builds the engine HTTP config from proxy settings. The password comes
+/// from the OS keychain (never the DB); PAC files resolve once here —
+/// proxy changes apply on the next launch.
+fn proxy_config_from_store(store: &swiftfetch_store::Store) -> swiftfetch_net::HttpConfig {
+    use swiftfetch_net::{ProxyMode, proxy_from_parts};
+    let setting = |key: &str| -> Option<String> {
+        repos::get_setting(store, key)
+            .ok()
+            .flatten()
+            .and_then(|v| serde_json::from_str::<String>(&v).ok())
+    };
+    let mode = proxy_from_parts(
+        setting("proxy.mode").as_deref().unwrap_or("system"),
+        setting("proxy.url").as_deref(),
+    );
+    // PAC needs one fetch: do it synchronously at startup (15 s cap).
+    let mode = match mode {
+        ProxyMode::Pac(url) => tauri::async_runtime::block_on(async {
+            match swiftfetch_net::resolve_pac(&url).await {
+                Ok(Some(resolved)) => {
+                    tracing::info!("PAC resolved a proxy");
+                    ProxyMode::Manual(resolved)
+                }
+                Ok(None) => {
+                    tracing::info!("PAC says DIRECT");
+                    ProxyMode::Disabled
+                }
+                Err(err) => {
+                    tracing::warn!(%err, "PAC failed; going direct");
+                    ProxyMode::Disabled
+                }
+            }
+        }),
+        other => other,
+    };
+    swiftfetch_net::HttpConfig {
+        proxy: mode,
+        proxy_username: setting("proxy.username").filter(|s| !s.is_empty()),
+        proxy_password: proxy_password_from_keychain(),
+        ..swiftfetch_net::HttpConfig::default()
+    }
+}
+
+/// Reads the proxy password from the OS keychain (set in Settings).
+fn proxy_password_from_keychain() -> Option<String> {
+    keyring::Entry::new("SwiftFetch", "proxy-password")
+        .ok()?
+        .get_password()
+        .ok()
+        .filter(|p| !p.is_empty())
 }
 
 /// Opens the engine, installing the system AV scanner when one is available

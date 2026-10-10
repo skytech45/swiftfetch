@@ -7,6 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+keyring = "3"
 rusqlite = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }

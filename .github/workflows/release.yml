@@ -1,0 +1,57 @@
+name: Release (Windows signed installer)
+
+# Tag a release: git tag v0.2.0 && git push origin v0.2.0
+# Requires repo secrets (see docs/SIGNING.md): TAURI_SIGNING_PRIVATE_KEY,
+# AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET,
+# AZURE_TRUSTED_SIGN_ACCOUNT, AZURE_TRUSTED_SIGN_PROFILE,
+# AZURE_TRUSTED_SIGN_ENDPOINT.
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Stage browser assets (release)
+        run: node scripts/package-browser-assets.mjs --release
+
+      - name: Azure login (Trusted Signing)
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}"}'
+
+      - name: Tauri build (NSIS, updater-signed)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        with:
+          args: --bundles nsis
+
+      - name: Trusted-sign installer + binaries
+        uses: azure/trusted-signing-action@v1
+        with:
+          endpoint: ${{ secrets.AZURE_TRUSTED_SIGN_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGN_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_TRUSTED_SIGN_PROFILE }}
+          files-folder: ${{ github.workspace }}\target\release\bundle\nsis
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256

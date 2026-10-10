@@ -212,7 +212,7 @@ async fn handle_message(
                     .and_then(Value::as_str)
                     .map(str::to_owned),
             };
-            let client = media_client()?;
+            let client = media_client(store).await?;
             let solver = RuntimeSolver::new(client.clone());
             let site = YoutubeSite::new(&client, &solver);
             let options = site
@@ -300,9 +300,53 @@ fn detect_kind(url: &str) -> &'static str {
 }
 
 /// The outbound client used for site-module requests (watch pages, player
-/// scripts).
-fn media_client() -> Result<reqwest::Client, String> {
-    swiftfetch_net::HttpConfig::default()
-        .client()
-        .map_err(|err| format!("http client: {err}"))
+/// scripts). Honors the desktop proxy settings (keychain password included);
+/// PAC files resolve here since this runs in async context.
+async fn media_client(
+    store: &Arc<std::sync::Mutex<swiftfetch_store::Store>>,
+) -> Result<reqwest::Client, String> {
+    use swiftfetch_net::{ProxyMode, proxy_from_parts};
+    let (mode, username, password) = {
+        let guard = store
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let setting = |key: &str| {
+            swiftfetch_store::repos::get_setting(&guard, key)
+                .ok()
+                .flatten()
+                .and_then(|v| serde_json::from_str::<String>(&v).ok())
+        };
+        (
+            proxy_from_parts(
+                setting("proxy.mode").as_deref().unwrap_or("system"),
+                setting("proxy.url").as_deref(),
+            ),
+            setting("proxy.username").filter(|s| !s.is_empty()),
+            keyring_password(),
+        )
+    };
+    let mode = match mode {
+        ProxyMode::Pac(url) => match swiftfetch_net::resolve_pac(&url).await {
+            Ok(Some(resolved)) => ProxyMode::Manual(resolved),
+            _ => ProxyMode::Disabled,
+        },
+        other => other,
+    };
+    swiftfetch_net::HttpConfig {
+        proxy: mode,
+        proxy_username: username,
+        proxy_password: password,
+        ..swiftfetch_net::HttpConfig::default()
+    }
+    .client()
+    .map_err(|err| format!("http client: {err}"))
+}
+
+/// Proxy password from the OS keychain (empty when unset).
+fn keyring_password() -> Option<String> {
+    keyring::Entry::new("SwiftFetch", "proxy-password")
+        .ok()?
+        .get_password()
+        .ok()
+        .filter(|p| !p.is_empty())
 }

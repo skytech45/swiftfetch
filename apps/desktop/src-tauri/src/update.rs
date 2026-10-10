@@ -159,10 +159,7 @@ pub async fn check_for_updates(
     if !response.status().is_success() {
         return Ok(idle);
     }
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|_| "bad feed".to_owned())?;
+    let bytes = response.bytes().await.map_err(|_| "bad feed".to_owned())?;
     let body: serde_json::Value =
         serde_json::from_slice(&bytes).map_err(|_| "bad feed".to_owned())?;
     let version = body
@@ -238,9 +235,6 @@ pub async fn get_remote_config(
     if !response.status().is_success() {
         return Ok(serde_json::Value::Object(Default::default()));
     }
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| e.to_string())?;
+    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
     serde_json::from_slice(&bytes).map_err(|e| e.to_string())
 }

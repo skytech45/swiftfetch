@@ -733,3 +733,88 @@ pub async fn get_update_status(
         version: env!("CARGO_PKG_VERSION").to_owned(),
     })
 }
+
+// ── Proxy settings (Windows production pack) ───────────────────────────
+
+/// UI-facing proxy configuration (password never leaves the keychain).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyView {
+    /// `system|disabled|manual|pac`.
+    pub mode: String,
+    /// Proxy or PAC URL for manual/pac modes.
+    pub url: String,
+    /// Proxy username (empty when none).
+    pub username: String,
+    /// Whether a keychain password is stored.
+    pub has_password: bool,
+}
+
+/// Reads proxy settings (applies on next launch).
+#[tauri::command]
+pub async fn get_proxy_config(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<ProxyView, String> {
+    let get = |key: &str| {
+        let key = key.to_owned();
+        let state = Arc::clone(&state);
+        async move {
+            db(&state, move |s| repos::get_setting(s, &key))
+                .await
+                .unwrap_or(None)
+                .and_then(|v| serde_json::from_str::<String>(&v).ok())
+                .unwrap_or_default()
+        }
+    };
+    let mode = get("proxy.mode").await;
+    let url = get("proxy.url").await;
+    let username = get("proxy.username").await;
+    let has_password = keyring::Entry::new("SwiftFetch", "proxy-password")
+        .ok()
+        .and_then(|e| e.get_password().ok())
+        .is_some_and(|p| !p.is_empty());
+    Ok(ProxyView {
+        mode: if mode.is_empty() { "system".to_owned() } else { mode },
+        url,
+        username,
+        has_password,
+    })
+}
+
+/// Writes proxy settings (mode/url/username). Takes effect on restart.
+#[tauri::command]
+pub async fn set_proxy_config(
+    state: tauri::State<'_, Arc<AppState>>,
+    mode: String,
+    url: String,
+    username: String,
+) -> Result<(), String> {
+    if !["system", "disabled", "manual", "pac"].contains(&mode.as_str()) {
+        return Err("proxy mode must be system, disabled, manual or pac".to_owned());
+    }
+    if (mode == "manual" || mode == "pac") && url.trim().is_empty() {
+        return Err("a proxy or PAC URL is required".to_owned());
+    }
+    db(&state, move |s| {
+        repos::set_setting(s, "proxy.mode", &serde_json::to_string(&mode).unwrap_or_default())?;
+        repos::set_setting(s, "proxy.url", &serde_json::to_string(&url).unwrap_or_default())?;
+        repos::set_setting(s, "proxy.username", &serde_json::to_string(&username).unwrap_or_default())?;
+        Ok(())
+    })
+    .await
+}
+
+/// Stores the proxy password in the OS keychain (empty clears it).
+#[tauri::command]
+pub async fn set_proxy_password(password: String) -> Result<(), String> {
+    let entry =
+        keyring::Entry::new("SwiftFetch", "proxy-password").map_err(|e| e.to_string())?;
+    if password.is_empty() {
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(other) => Err(other.to_string()),
+        }
+    } else {
+        entry.set_password(&password).map_err(|e| e.to_string())
+    }
+}

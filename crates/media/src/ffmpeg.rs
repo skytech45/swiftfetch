@@ -24,6 +24,9 @@ impl Ffmpeg {
     /// Locates the sidecar: `$SWIFTFETCH_FFMPEG`, then `ffmpeg` on `PATH`,
     /// then beside the current executable.
     ///
+    /// For first-use bootstrap (download when missing), use
+    /// [`crate::ensure_ffmpeg`] instead.
+    ///
     /// # Errors
     ///
     /// Returns [`MediaError::Ffmpeg`] when no usable ffmpeg is found.
@@ -54,6 +57,12 @@ impl Ffmpeg {
         Err(MediaError::Ffmpeg(format!(
             "ffmpeg not found (searched: {SEARCH_HINT})"
         )))
+    }
+
+    /// Wraps an already-resolved ffmpeg executable (e.g. from bootstrap).
+    #[must_use]
+    pub fn from_exe(exe: PathBuf) -> Self {
+        Self { exe }
     }
 
     /// The resolved executable path (tests + diagnostics).

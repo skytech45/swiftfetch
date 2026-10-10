@@ -17,7 +17,7 @@ pub mod player;
 
 use std::path::{Path, PathBuf};
 
-use swiftfetch_media::{Ffmpeg, MediaContext, MediaError};
+use swiftfetch_media::{Ffmpeg, MediaContext, MediaError, ensure_ffmpeg};
 use tokio_util::sync::CancellationToken;
 
 pub use cipher::{
@@ -310,7 +310,7 @@ impl<'a> YoutubeSite<'a> {
             },
         )
         .await?;
-        let ffmpeg = Ffmpeg::locate()?;
+        let ffmpeg = Ffmpeg::from_exe(ensure_ffmpeg().await?);
         ffmpeg.merge(&video_part, &audio_part, out).await?;
         let _ = std::fs::remove_file(&video_part);
         let _ = std::fs::remove_file(&audio_part);
